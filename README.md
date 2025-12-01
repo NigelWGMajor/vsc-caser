@@ -36,6 +36,8 @@ Suggested keybindings:
 
 **regexPatterns** lists useful regex patterns for use by the `Select by Regex` function.
 
+**quickRefPath** specifies the absolute path to a PDF file for quick reference access. If not set, defaults to `quick-reference.pdf` in the VSCode User folder (`%APPDATA%\Code\User\` on Windows, `~/.config/Code/User/` on Linux, `~/Library/Application Support/Code/User/` on macOS).
+
 **dotIcons, squareIcons, numberIcons, stepIcons, queryIcons, refIcons, warnIcons, linkIcons, userIcons**
 
 These define the symbols or icons to be used by the various marking functions.
@@ -143,3 +145,10 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 - surrounding backticks are removed
 
 `acs b` to Bash like above but uses bash shell.
+
+### Quick Reference
+
+`show-quick-ref` Opens a PDF file in the vscode default PDF viewer for quick reference.
+- Configure the PDF path in Settings > Caser > Quick Ref Path
+- If not configured, looks for `quick-reference.pdf` in the VSCode User folder
+- Useful for keeping documentation, keyboard shortcuts, or other reference materials readily accessible

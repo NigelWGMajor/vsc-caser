@@ -1782,6 +1782,32 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const quickRef = vscode.commands.registerCommand('caser.quickRef', async () => {
+        const config = vscode.workspace.getConfiguration('caser');
+        let pdfPath = config.get<string>('quickRefPath', '');
+
+        // If path is not set, use the default location in VSCode's appData folder
+        if (!pdfPath || pdfPath.trim() === '') {
+            const appDataPath = process.env.APPDATA || process.env.HOME;
+            if (!appDataPath) {
+                vscode.window.showErrorMessage('Could not determine user folder location.');
+                return;
+            }
+            pdfPath = require('path').join(appDataPath, 'Code', 'User', 'quick-reference.pdf');
+        }
+
+        // Check if the file exists
+        try {
+            const uri = vscode.Uri.file(pdfPath);
+            await vscode.workspace.fs.stat(uri);
+
+            // Open the PDF inside VSCode using the associated extension
+            await vscode.commands.executeCommand('vscode.open', uri);
+            vscode.window.showInformationMessage('Quick reference opened.');
+        } catch (error) {
+            vscode.window.showErrorMessage(`PDF file not found at: ${pdfPath}\n\nPlease set the path in Settings > Caser > Quick Ref Path`);
+        }
+    });
     const toBash = vscode.commands.registerCommand('caser.toBash', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -1913,6 +1939,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toClipboard);
     context.subscriptions.push(toDimmed);
     context.subscriptions.push(toBash);
+    context.subscriptions.push(quickRef);
 }
 
 // This method is called when your extension is deactivated

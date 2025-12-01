@@ -196,6 +196,11 @@
                         "{g} "
                     ],
                     "description": "The set of icons used for user marking."
+                },
+                "caser.quickRefPath": {
+                    "type": "string",
+                    "default": "",
+                    "description": "Absolute path to the quick-reference PDF file. Defaults to quick-reference.pdf in VSCode's appData folder if not specified."
                 }
             }
         },
@@ -435,6 +440,10 @@
             {
                 "command": "caser.toClipboard",
                 "title": "to-Clipboard"
+            },
+            {
+                "command": "caser.quickRef",
+                "title": "show-quick-ref"
             }
         ]
     },
