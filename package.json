@@ -386,6 +386,10 @@
                 "title": "to-SuffixList"
             },
             {
+                "command": "caser.toNumbered",
+                "title": "to-NumericSequence"
+            },
+            {
                 "command": "caser.toNoCurly",
                 "title": "to-NoCurly"
             },

@@ -141,6 +141,50 @@ export function activate(context: vscode.ExtensionContext) {
     function stripWhiteSpace(text: string) {
         return text.replace(/\s{2,100}/g, ' ');
     }
+    function NumericSequence(
+        editor: vscode.TextEditor,
+        selections: readonly vscode.Selection[]
+    ) {
+        const document = editor.document;
+        const trailingNumber = (text: string) => {
+            const match = text.match(/([+-]?)(\d+)$/);
+            if (!match || match.index === undefined) {
+                return;
+            }
+            return {
+                prefix: text.slice(0, match.index),
+                sign: match[1] ?? '',
+                digits: match[2]
+            };
+        };
+        const ranges = selections.map(selection => document.getWordRangeAtPosition(selection.start) ?? selection);
+        if (ranges.length === 0) {
+            return;
+        }
+        const seedText = document.getText(ranges[0]);
+        const seedMatch = trailingNumber(seedText);
+        let current = seedMatch ? parseInt(`${seedMatch.sign}${seedMatch.digits}`, 10) : 1;
+        if (Number.isNaN(current)) {
+            current = 1;
+        }
+        let nextValue = current;
+        editor.edit(builder => {
+            for (const range of ranges) {
+                const text = document.getText(range);
+                const match = trailingNumber(text);
+                if (match) {
+                    const width = match.digits.length;
+                    const sign = nextValue < 0 ? '-' : (nextValue > 0 && match.sign === '+') ? '+' : '';
+                    const replacement = sign + Math.abs(nextValue).toString().padStart(width, '0');
+                    builder.replace(range, match.prefix + replacement);
+                }
+                else {
+                    builder.replace(range, text + nextValue.toString());
+                }
+                nextValue++;
+            }
+        });
+    }
     function FindMarked(editor: vscode.TextEditor | undefined) {
         if (editor) {
             const document = editor.document;
@@ -1577,6 +1621,12 @@ export function activate(context: vscode.ExtensionContext) {
             SelectAllAtLeft(editor);
         }
     });
+    const toNumbered = vscode.commands.registerCommand('caser.toNumbered', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            NumericSequence(editor, editor.selections);
+        }
+    });
     const toTogglePipeComma = vscode.commands.registerCommand('caser.toTogglePipeComma', () => {
         const editor = vscode.window.activeTextEditor;
         // see if a pipe or comma appears first
@@ -1879,7 +1929,37 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
-
+    const toPowershell = vscode.commands.registerCommand('caser.toPowershell', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selections = editor.selections;
+            var terminal = vscode.window.activeTerminal;
+            if (!terminal) {
+                terminal = vscode.window.createTerminal('Caser');
+            }
+            terminal.show();
+            // typically we may have a number of lines selected but not individually.
+            // We want to execute each line in the terminal one at a time.
+            for (const selection of selections) {
+                const sel2 = defaultToLineSelected(editor, selection);
+                var lines = document.getText(sel2);
+                if (lines.length === 0) {
+                    continue;
+                }
+                var linesArray = lines.replace('\r', '').split('\n');
+                var ix = 0;
+                for (const line of linesArray) {
+                    var text = line.trim();
+                    if (text.startsWith('`') && text.endsWith('`')) {
+                        text = text.replaceAll('`', '').trim();
+                    }
+                    // send text to terminal
+                    terminal.sendText(text);
+                }
+            }
+        }
+    });
     context.subscriptions.push(toCamelCase);
     context.subscriptions.push(toKebabCase);
     context.subscriptions.push(toSnakeCase);
@@ -1924,6 +2004,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toEnd);
     context.subscriptions.push(toPrefixList);
     context.subscriptions.push(toSuffixList);
+    context.subscriptions.push(toNumbered);
     context.subscriptions.push(toNoSquare);
     context.subscriptions.push(toNoParens);
     context.subscriptions.push(toNoCurly);
@@ -1934,14 +2015,15 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTogglePipeComma);
     context.subscriptions.push(selectByRegex);
     context.subscriptions.push(toNewLine);
-    context.subscriptions.push(toTerminal);
     context.subscriptions.push(toMath);
     context.subscriptions.push(toClipboard);
     context.subscriptions.push(toDimmed);
-    context.subscriptions.push(toBash);
     context.subscriptions.push(quickRef);
+    context.subscriptions.push(toTerminal);
+    context.subscriptions.push(toBash);
+    context.subscriptions.push(toPowershell);
+
 }
 
 // This method is called when your extension is deactivated
 // export function deactivate() {}
-
