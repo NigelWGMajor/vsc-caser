@@ -100,7 +100,7 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 `as R` to-Select-by-Regex  selects based on regex
 `as N` as New Line      (w) place each selection on a new line
 `as D` to-Dimmed            toggles dimming on any line matched in the dimmableMatches setting for the current language
-                          
+`a N`  to-numeric-sequence inserts or replaces numbers in-line in sequence selected, starting with the first number or 1                    
 
 ### Dummy text
 
@@ -145,6 +145,7 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 - surrounding backticks are removed
 
 `acs b` to Bash like above but uses bash shell.
+`cs enter` to Powershell command
 
 ### Quick Reference
 
