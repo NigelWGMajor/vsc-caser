@@ -100,7 +100,8 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 `as R` to-Select-by-Regex  selects based on regex
 `as N` as New Line      (w) place each selection on a new line
 `as D` to-Dimmed            toggles dimming on any line matched in the dimmableMatches setting for the current language
-`a N`  to-numeric-sequence inserts or replaces trailing numbers in-line in the sequence selected, starting with the first number or 1                    
+`a N`  to-numeric-sequence  inserts or replaces trailing numbers in-line in the sequence selected, starting with the first number or 1 
+`a O`  to-Ordered           orders a selected block by line alphabetically  
 
 ### Dummy text
 

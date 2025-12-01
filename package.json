@@ -382,6 +382,10 @@
                 "title": "to-PrefixList"
             },
             {
+                "command": "caser.toOrder",
+                "title": "to-Order"
+            },
+            {
                 "command": "caser.toSuffixList",
                 "title": "to-SuffixList"
             },

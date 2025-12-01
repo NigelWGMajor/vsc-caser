@@ -173,9 +173,8 @@ export function activate(context: vscode.ExtensionContext) {
                 const text = document.getText(range);
                 const match = trailingNumber(text);
                 if (match) {
-                    const width = match.digits.length;
                     const sign = nextValue < 0 ? '-' : (nextValue > 0 && match.sign === '+') ? '+' : '';
-                    const replacement = sign + Math.abs(nextValue).toString().padStart(width, '0');
+                    const replacement = sign + Math.abs(nextValue).toString();
                     builder.replace(range, match.prefix + replacement);
                 }
                 else {
@@ -1598,6 +1597,31 @@ export function activate(context: vscode.ExtensionContext) {
             SelectAllAtLeft(editor);
         }
     });
+    const toOrder = vscode.commands.registerCommand('caser.toOrder', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const newline = document.eol === vscode.EndOfLine.LF ? '\n' : '\r\n';
+            editor.edit(builder => {
+                for (const selection of editor.selections) {
+                    const startLine = selection.start.line;
+                    const endLine = selection.end.line;
+                    const range = new vscode.Selection(
+                        document.lineAt(startLine).range.start,
+                        document.lineAt(endLine).range.end
+                    );
+                    const text = document.getText(range);
+                    if (!text.length) {
+                        continue;
+                    }
+                    const lines = text.split(/\r?\n/);
+                    lines.sort((a, b) => a.localeCompare(b));
+                    const newText = lines.join(newline);
+                    builder.replace(range, newText);
+                }
+            });
+        }
+    });
     const toSuffixList = vscode.commands.registerCommand('caser.toSuffixList', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -2003,6 +2027,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTest);
     context.subscriptions.push(toEnd);
     context.subscriptions.push(toPrefixList);
+    context.subscriptions.push(toOrder);
     context.subscriptions.push(toSuffixList);
     context.subscriptions.push(toNumbered);
     context.subscriptions.push(toNoSquare);
