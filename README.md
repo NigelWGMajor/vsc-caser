@@ -140,6 +140,20 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 - the rest moves to that file, link remains. 
 - Repeat to append to file. File is opened and updated.
 
+### Bucketed save/load
+
+`Save-To-Bucket` (`caser.saveToBucket`) saves the active editor contents through the standard Save dialog, but defaults the dialog to the last folder you selected or to the current bucket folder inside `<workspace>/.data`. `Load-From-Bucket` (`caser.loadFromBucket`) opens a file using the same bucket-aware default directory so you can wire both commands to convenient keys.
+
+Buckets are created automatically based on the **Caser > Bucket Span** setting (default `week`). The bucket folder name depends on the chosen span:
+
+| Span | Name format |
+| -- | -- |
+| day | `YYYY-mm-dd` |
+| week | `YYYY-mm-dd` (first day of the week, Sunday) |
+| month | `YYYY-mm` |
+| quarter | `YYYYQn` |
+| year | `YYYY` |
+
 `acs enter` to Terminal - pushes the one line at a time to the shell.
 - is wrapped in `cmd /k` and `exit`
 - all forward slashes are converted to backslashes.

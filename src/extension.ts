@@ -3,9 +3,175 @@
 // import { unescape } from 'querystring';
 import * as vscode from 'vscode';
 import * as crypto from 'crypto-js';
+import * as path from 'path';
 const math = require('mathjs');
 import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
+
+type BucketSpan = 'day' | 'week' | 'month' | 'quarter' | 'year';
+
+class BucketFolderService {
+    private static readonly lastFolderKey = 'caser.bucket.lastFolder';
+
+    constructor(private readonly context: vscode.ExtensionContext) { }
+
+    async showSaveDialog(overrides?: vscode.SaveDialogOptions): Promise<vscode.Uri | undefined> {
+        const options = await this.mergeSaveOptions(overrides);
+        const selection = await vscode.window.showSaveDialog(options);
+        if (selection) {
+            await this.rememberFolder(selection);
+        }
+        return selection;
+    }
+
+    async showOpenDialog(overrides?: vscode.OpenDialogOptions): Promise<vscode.Uri | undefined> {
+        const options = await this.mergeOpenOptions(overrides);
+        const selection = await vscode.window.showOpenDialog(options);
+        if (selection && selection.length > 0) {
+            await this.rememberFolder(selection[0]);
+            return selection[0];
+        }
+        return undefined;
+    }
+
+    private async mergeSaveOptions(overrides?: vscode.SaveDialogOptions): Promise<vscode.SaveDialogOptions> {
+        const defaultUri = overrides?.defaultUri ?? await this.getDefaultFolderUri();
+        return {
+            saveLabel: 'Save to bucket',
+            defaultUri,
+            ...overrides
+        };
+    }
+
+    private async mergeOpenOptions(overrides?: vscode.OpenDialogOptions): Promise<vscode.OpenDialogOptions> {
+        const defaultUri = overrides?.defaultUri ?? await this.getDefaultFolderUri();
+        return {
+            canSelectMany: false,
+            openLabel: 'Load from bucket',
+            defaultUri,
+            ...overrides
+        };
+    }
+
+    private async getDefaultFolderUri(): Promise<vscode.Uri | undefined> {
+        const lastFolder = await this.getLastFolderUri();
+        if (lastFolder) {
+            return lastFolder;
+        }
+        return this.getBucketFolderUri();
+    }
+
+    private async getLastFolderUri(): Promise<vscode.Uri | undefined> {
+        const stored = this.context.workspaceState.get<string>(BucketFolderService.lastFolderKey);
+        if (!stored) {
+            return undefined;
+        }
+        const candidate = vscode.Uri.parse(stored);
+        if (await this.pathExists(candidate)) {
+            return candidate;
+        }
+        return undefined;
+    }
+
+    private async rememberFolder(fileUri: vscode.Uri): Promise<void> {
+        const folderUri = this.getFolderFromFileUri(fileUri);
+        if (!folderUri) {
+            return;
+        }
+        await this.context.workspaceState.update(BucketFolderService.lastFolderKey, folderUri.toString());
+    }
+
+    private getFolderFromFileUri(fileUri: vscode.Uri): vscode.Uri | undefined {
+        const folderPath = path.dirname(fileUri.fsPath);
+        if (!folderPath) {
+            return undefined;
+        }
+        return vscode.Uri.file(folderPath);
+    }
+
+    private async getBucketFolderUri(): Promise<vscode.Uri | undefined> {
+        const workspaceRoot = this.getWorkspaceRoot();
+        if (!workspaceRoot) {
+            return undefined;
+        }
+        const bucketName = this.getBucketName(new Date());
+        const bucketUri = vscode.Uri.joinPath(workspaceRoot, '.data', bucketName);
+        await this.ensureDirectory(bucketUri);
+        return bucketUri;
+    }
+
+    private getBucketName(now: Date): string {
+        const span = this.getBucketSpan();
+        const year = now.getFullYear();
+        switch (span) {
+            case 'year':
+                return `${year}`;
+            case 'quarter': {
+                const quarter = Math.floor(now.getMonth() / 3) + 1;
+                return `${year}Q${quarter}`;
+            }
+            case 'month':
+                return `${year}-${this.pad(now.getMonth() + 1)}`;
+            case 'week': {
+                const weekStart = this.getWeekStart(now);
+                return `${weekStart.getFullYear()}-${this.pad(weekStart.getMonth() + 1)}-${this.pad(weekStart.getDate())}`;
+            }
+            case 'day':
+            default:
+                return `${year}-${this.pad(now.getMonth() + 1)}-${this.pad(now.getDate())}`;
+        }
+    }
+
+    private getBucketSpan(): BucketSpan {
+        const config = vscode.workspace.getConfiguration('caser');
+        const value = config.get<string>('bucketSpan', 'week');
+        if (value === 'day' || value === 'week' || value === 'month' || value === 'quarter' || value === 'year') {
+            return value;
+        }
+        return 'week';
+    }
+
+    private pad(value: number): string {
+        return value.toString().padStart(2, '0');
+    }
+
+    private getWeekStart(now: Date): Date {
+        const weekStart = new Date(now);
+        weekStart.setHours(0, 0, 0, 0);
+        const day = weekStart.getDay();
+        weekStart.setDate(weekStart.getDate() - day);
+        return weekStart;
+    }
+
+    private getWorkspaceRoot(): vscode.Uri | undefined {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const folder = vscode.workspace.getWorkspaceFolder(editor.document.uri);
+            if (folder) {
+                return folder.uri;
+            }
+        }
+        const fallback = vscode.workspace.workspaceFolders?.[0];
+        return fallback?.uri;
+    }
+
+    private async ensureDirectory(uri: vscode.Uri): Promise<void> {
+        try {
+            await vscode.workspace.fs.createDirectory(uri);
+        } catch {
+            // ignore directory creation issues, fs.createDirectory is idempotent
+        }
+    }
+
+    private async pathExists(uri: vscode.Uri): Promise<boolean> {
+        try {
+            await vscode.workspace.fs.stat(uri);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -16,6 +182,7 @@ export function activate(context: vscode.ExtensionContext) {
     ///////////////////////////////////////////////////////////////
 
     let isDimActive = false;
+    const bucketFolders = new BucketFolderService(context);
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -834,6 +1001,40 @@ export function activate(context: vscode.ExtensionContext) {
                     vscode.window.showErrorMessage('Error creating file: ' + error);
                 }
             }
+        }
+    });
+    const saveToBucket = vscode.commands.registerCommand('caser.saveToBucket', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('No active editor is available to save.');
+            return;
+        }
+        const targetUri = await bucketFolders.showSaveDialog();
+        if (!targetUri) {
+            return;
+        }
+        try {
+            const contents = new TextEncoder().encode(editor.document.getText());
+            await vscode.workspace.fs.writeFile(targetUri, contents);
+            const savedDocument = await vscode.workspace.openTextDocument(targetUri);
+            await vscode.window.showTextDocument(savedDocument, { preview: false });
+            vscode.window.showInformationMessage(`Saved to ${targetUri.fsPath}`);
+        }
+        catch (error) {
+            vscode.window.showErrorMessage('Failed to save file: ' + error);
+        }
+    });
+    const loadFromBucket = vscode.commands.registerCommand('caser.loadFromBucket', async () => {
+        const targetUri = await bucketFolders.showOpenDialog();
+        if (!targetUri) {
+            return;
+        }
+        try {
+            const document = await vscode.workspace.openTextDocument(targetUri);
+            await vscode.window.showTextDocument(document, { preview: false });
+        }
+        catch (error) {
+            vscode.window.showErrorMessage('Failed to load file: ' + error);
         }
     });
     const toUnBackTicked = vscode.commands.registerCommand('caser.toUnBackTicked', () => {
@@ -2035,6 +2236,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toNoCurly);
     context.subscriptions.push(toNoAngle);
     context.subscriptions.push(toFile);
+    context.subscriptions.push(saveToBucket);
+    context.subscriptions.push(loadFromBucket);
     context.subscriptions.push(toDos);
     context.subscriptions.push(toUnix);
     context.subscriptions.push(toTogglePipeComma);

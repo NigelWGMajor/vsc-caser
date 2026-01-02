@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.26.",
-    "version": "1.0.26",
+    "description": "This is the README for extension \"caser\" version 1.0.27.",
+    "version": "1.0.27",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -201,6 +201,18 @@
                     "type": "string",
                     "default": "",
                     "description": "Absolute path to the quick-reference PDF file. Defaults to quick-reference.pdf in VSCode's appData folder if not specified."
+                },
+                "caser.bucketSpan": {
+                    "type": "string",
+                    "enum": [
+                        "day",
+                        "week",
+                        "month",
+                        "quarter",
+                        "year"
+                    ],
+                    "default": "week",
+                    "description": "Controls how SaveToBucket and LoadFromBucket group files under the workspace .data folder."
                 }
             }
         },
@@ -412,6 +424,14 @@
             {
                 "command": "caser.toFile",
                 "title": "to-File"
+            },
+            {
+                "command": "caser.saveToBucket",
+                "title": "Save-To-Bucket"
+            },
+            {
+                "command": "caser.loadFromBucket",
+                "title": "Load-From-Bucket"
             },
             {
                 "command": "caser.toDos",

@@ -34,6 +34,10 @@ to-Flip |  ¢-$-/
 
 Note: to-Flip uses a local environment variable as a passkey: VSCODE_KEY
 
+**Bucket Storage**||
+Save-To-Bucket | *(assign keybinding as needed)* | -
+Load-From-Bucket | *(assign keybinding as needed)* | -
+
 ## Combine with these:
 --|--
 alt click:   | multiple cursors
