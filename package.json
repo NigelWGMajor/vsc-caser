@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.27.",
-    "version": "1.0.27",
+    "description": "This is the README for extension \"caser\" version 1.0.28.",
+    "version": "1.0.28",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -517,5 +517,8 @@
         "crypto-js": "^4.2.0",
         "mathjs": "^14.4.0",
         "vsce": "^2.15.0"
+    },
+    "overrides": {
+        "xml2js": "^0.6.2"
     }
 }
