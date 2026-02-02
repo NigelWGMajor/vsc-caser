@@ -168,3 +168,13 @@ Buckets are created automatically based on the **Caser > Bucket Span** setting (
 - Configure the PDF path in Settings > Caser > Quick Ref Path
 - If not configured, looks for `quick-reference.pdf` in the VSCode User folder
 - Useful for keeping documentation, keyboard shortcuts, or other reference materials readily accessible
+
+### Triage
+
+`triage-filename` is used to step through a list of files, typically for traige or checking purposes.
+
+Starting at the first line in the file, when triggered:
+
+- any filename on that line will be pasted into the command bar to allow searching
+- the row will be moved above an empty line so that it is easy to keep track of
+- the next filename will be selected 

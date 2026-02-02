@@ -2185,6 +2185,89 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
+    const triageNextRowAsFileName = vscode.commands.registerCommand('caser.triageNextRowAsFileName', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+        const document = editor.document;
+        const selection = editor.selection;
+        const currentLineNum = selection.start.line;
+        const currentLine = document.lineAt(currentLineNum);
+        const currentLineText = currentLine.text;
+
+        // Extract filename with extension from the current line
+        // Match filenames like: file.txt, path/to/file.js, ../file.cs, etc.
+        const filenameRegex = /([^\s<>"|?*:]+\.\w+)/;
+        const match = currentLineText.match(filenameRegex);
+
+        if (!match) {
+            vscode.window.showInformationMessage('No filename with extension found in current line');
+            return;
+        }
+
+        const filename = match[1];
+
+        // Trigger the Quick Open file search with the filename from current line
+        await vscode.commands.executeCommand('workbench.action.quickOpen', filename);
+
+        // Check if there's a blank line immediately above the current line
+        const hasBlankLineAbove = currentLineNum > 0 && document.lineAt(currentLineNum - 1).text.trim() === '';
+
+        await editor.edit(editBuilder => {
+            if (hasBlankLineAbove) {
+                // Move current line above the blank line
+                // Delete the current line (including newline)
+                const lineToDelete = new vscode.Range(
+                    currentLine.range.start,
+                    currentLineNum < document.lineCount - 1
+                        ? document.lineAt(currentLineNum + 1).range.start
+                        : currentLine.range.end
+                );
+                editBuilder.delete(lineToDelete);
+
+                // Insert at the position of the blank line (which is currentLineNum - 1)
+                const insertPos = new vscode.Position(currentLineNum - 1, 0);
+                editBuilder.insert(insertPos, currentLineText + '\n');
+            } else {
+                // First time: insert a blank line below current line
+                const endOfCurrentLine = currentLine.range.end;
+                editBuilder.insert(endOfCurrentLine, '\n');
+            }
+        });
+
+        // Wait for the edit to complete
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Position cursor on the line after the blank line (next line to process)
+        if (hasBlankLineAbove) {
+            // After moving line above blank, the blank is now at currentLineNum
+            // Next line to process is at currentLineNum + 1
+            const targetLineNum = currentLineNum + 1;
+            if (targetLineNum < document.lineCount) {
+                const newPosition = new vscode.Position(targetLineNum, 0);
+                editor.selection = new vscode.Selection(newPosition, newPosition);
+                editor.revealRange(new vscode.Range(newPosition, newPosition));
+            } else {
+                // No more lines, position on blank line
+                const newPosition = new vscode.Position(currentLineNum, 0);
+                editor.selection = new vscode.Selection(newPosition, newPosition);
+            }
+        } else {
+            // First time: blank line inserted at currentLineNum + 1, next line is currentLineNum + 2
+            const targetLineNum = currentLineNum + 2;
+            if (targetLineNum < document.lineCount) {
+                const newPosition = new vscode.Position(targetLineNum, 0);
+                editor.selection = new vscode.Selection(newPosition, newPosition);
+                editor.revealRange(new vscode.Range(newPosition, newPosition));
+            } else {
+                // No more lines, position on blank line at currentLineNum + 1
+                const blankLineNum = currentLineNum + 1;
+                const newPosition = new vscode.Position(blankLineNum, 0);
+                editor.selection = new vscode.Selection(newPosition, newPosition);
+            }
+        }
+    });
     context.subscriptions.push(toCamelCase);
     context.subscriptions.push(toKebabCase);
     context.subscriptions.push(toSnakeCase);
@@ -2250,6 +2333,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTerminal);
     context.subscriptions.push(toBash);
     context.subscriptions.push(toPowershell);
+    context.subscriptions.push(triageNextRowAsFileName);
 
 }
 

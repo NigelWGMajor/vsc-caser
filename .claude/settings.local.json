@@ -5,7 +5,15 @@
       "Bash(npx vsce:*)",
       "Bash(src/extension.temp)",
       "Bash(dir \"C:\\source\\Nix\\caser\\src\")",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run package:*)",
+      "Bash(where:*)",
+      "Bash(C:nvm4wnodejsnode.exe node_modules/webpack/bin/webpack.js --mode production --devtool hidden-source-map)",
+      "Bash(npx webpack:*)",
+      "Bash(node:*)",
+      "Bash(cmd.exe /c \"npm run package\")",
+      "Bash(/c/nvm4w/nodejs/node.exe ./node_modules/.bin/webpack:*)",
+      "Bash(/c/nvm4w/nodejs/node.exe ./node_modules/.bin/vsce:*)"
     ],
     "deny": [],
     "ask": []
