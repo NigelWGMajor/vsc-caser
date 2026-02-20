@@ -1964,30 +1964,64 @@ export function activate(context: vscode.ExtensionContext) {
                     }
 
                     const parsedLines: LineInfo[] = [];
-                    let indentPattern: number | null = null;
+                    let indentPattern: string | null = null;
+                    let previousLevel = 0;
 
+                    // First pass: detect indent pattern from first indented line
                     for (const line of lines) {
                         if (line.trim().length === 0) {
                             continue;
                         }
 
-                        // Count leading whitespace/indentation
-                        const match = line.match(/^(\s*)/);
-                        const leadingSpace = match ? match[1].length : 0;
-                        const content = line.trim();
+                        // Look for leading characters (space, multiple spaces, or any other char)
+                        const leadingMatch = line.match(/^([ ]{1,2}|[^ ])/);
+                        if (leadingMatch && indentPattern === null) {
+                            // Found first indented line
+                            indentPattern = leadingMatch[1];
+                            break;
+                        }
+                    }
 
-                        // Determine indentation pattern from first indented line
-                        if (indentPattern === null && leadingSpace > 0) {
-                            indentPattern = leadingSpace;
+                    // If no indent pattern found, default to single space
+                    if (indentPattern === null) {
+                        indentPattern = ' ';
+                    }
+
+                    // Second pass: parse all lines
+                    for (const line of lines) {
+                        if (line.trim().length === 0) {
+                            continue;
                         }
 
-                        const level = indentPattern && indentPattern > 0 ? Math.floor(leadingSpace / indentPattern) : 0;
+                        // Count how many times indent pattern appears at start
+                        let level = 0;
+                        let remainingLine = line;
+
+                        // Keep removing indent pattern from start
+                        while (remainingLine.startsWith(indentPattern)) {
+                            level++;
+                            remainingLine = remainingLine.substring(indentPattern.length);
+                        }
+
+                        // Remove optional space after last indent marker
+                        if (remainingLine.startsWith(' ')) {
+                            remainingLine = remainingLine.substring(1);
+                        }
+
+                        const content = remainingLine.trim();
+
+                        // Clamp level to only increase by 1 at a time (but can decrease by any amount)
+                        if (level > previousLevel + 1) {
+                            level = previousLevel + 1;
+                        }
 
                         parsedLines.push({
                             level,
                             content,
                             originalLine: line
                         });
+
+                        previousLevel = level;
                     }
 
                     // Build tree structure
@@ -1998,23 +2032,22 @@ export function activate(context: vscode.ExtensionContext) {
                         let prefix = '';
 
                         // Build prefix based on hierarchy
-                        for (let level = 0; level < current.level; level++) {
-                            // Check if this level has more items after current line
+                        for (let level = 1; level < current.level; level++) {
+                            // Check if this ancestor level has more items after current line
                             let hasMoreAtLevel = false;
                             for (let j = i + 1; j < parsedLines.length; j++) {
-                                if (parsedLines[j].level < level) {
-                                    break;
-                                }
-                                if (parsedLines[j].level === level) {
-                                    hasMoreAtLevel = true;
+                                if (parsedLines[j].level <= level) {
+                                    if (parsedLines[j].level === level) {
+                                        hasMoreAtLevel = true;
+                                    }
                                     break;
                                 }
                             }
 
                             if (hasMoreAtLevel) {
-                                prefix += '│   ';
+                                prefix += '│  ';
                             } else {
-                                prefix += '    ';
+                                prefix += '   ';
                             }
                         }
 
@@ -2023,20 +2056,15 @@ export function activate(context: vscode.ExtensionContext) {
                             // Check if this is the last item at this level
                             let isLast = true;
                             for (let j = i + 1; j < parsedLines.length; j++) {
-                                if (parsedLines[j].level < current.level) {
-                                    break;
-                                }
-                                if (parsedLines[j].level === current.level) {
-                                    isLast = false;
+                                if (parsedLines[j].level <= current.level) {
+                                    if (parsedLines[j].level === current.level) {
+                                        isLast = false;
+                                    }
                                     break;
                                 }
                             }
 
-                            if (isLast) {
-                                prefix += '└── ';
-                            } else {
-                                prefix += '├── ';
-                            }
+                            prefix += isLast ? '└─ ' : '├─ ';
                         }
 
                         treeLines.push(prefix + current.content);
@@ -2165,72 +2193,63 @@ export function activate(context: vscode.ExtensionContext) {
     });
     const toDitto = vscode.commands.registerCommand('caser.toDitto', () => {
         const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            const document = editor.document;
-            const selection = editor.selection;
-            const currentLineNum = selection.active.line;
-
-            // Can't ditto if on first line
-            if (currentLineNum === 0) {
-                return;
-            }
-
-            const lineAbove = document.lineAt(currentLineNum - 1);
-            const currentLine = document.lineAt(currentLineNum);
-            const aboveText = lineAbove.text;
-            const currentText = currentLine.text;
-
-            // If current line already matches line above, do nothing
-            if (currentText === aboveText) {
-                return;
-            }
-
-            // Find where current text diverges from line above
-            // Current text should be a prefix of line above for ditto to make sense
-            if (!aboveText.startsWith(currentText)) {
-                // Current line doesn't match beginning of line above
-                // Start fresh from beginning of line above
-                const nextWordMatch = aboveText.match(/^(\s*\S+[\s,.!?;:]*)/);
-                if (nextWordMatch) {
-                    const textToCopy = nextWordMatch[1];
-                    editor.edit(builder => {
-                        builder.replace(currentLine.range, textToCopy);
-                    }).then(() => {
-                        const newPosition = new vscode.Position(currentLineNum, textToCopy.length);
-                        editor.selection = new vscode.Selection(newPosition, newPosition);
-                    });
-                }
-                return;
-            }
-
-            // Current line is a prefix of line above
-            // Find the next word to copy
-            const remainingText = aboveText.substring(currentText.length);
-
-            if (remainingText.length === 0) {
-                // Already copied everything
-                return;
-            }
-
-            // Match next word with optional leading/trailing spaces and punctuation
-            // Pattern: optional spaces, then word characters, then optional punctuation, then optional trailing spaces
-            const nextWordMatch = remainingText.match(/^(\s*\S+?)([,.!?;:]*\s*)/);
-
-            if (nextWordMatch) {
-                const leadingAndWord = nextWordMatch[1];
-                const punctuationAndSpaces = nextWordMatch[2];
-                const textToCopy = leadingAndWord + punctuationAndSpaces;
-
-                const newText = currentText + textToCopy;
-
-                editor.edit(builder => {
-                    builder.replace(currentLine.range, newText);
-                }).then(() => {
-                    const newPosition = new vscode.Position(currentLineNum, newText.length);
-                    editor.selection = new vscode.Selection(newPosition, newPosition);
-                });
-            }
+        if (!editor) {
+            return;
         }
+
+        const document = editor.document;
+
+        // Get exact cursor position (collapse any selection to cursor)
+        const cursorPos = editor.selection.active;
+        const lineNum = cursorPos.line;
+        const colNum = cursorPos.character;
+
+        // Can't ditto if on first line
+        if (lineNum === 0) {
+            return;
+        }
+
+        // Get line above
+        const lineAbove = document.lineAt(lineNum - 1);
+        const aboveText = lineAbove.text;
+
+        // If line above is too short at this column, nothing to copy
+        if (colNum >= aboveText.length) {
+            return;
+        }
+
+        // Get text from line above starting at cursor's column position
+        const textFromAbove = aboveText.substring(colNum);
+
+        if (textFromAbove.length === 0) {
+            return;
+        }
+
+        // Match: [leading spaces] + [word/punctuation] + [optional trailing space]
+        const wordMatch = textFromAbove.match(/^(\s*\S+\s?)/);
+
+        if (!wordMatch) {
+            return;
+        }
+
+        const textToCopy = wordMatch[1];
+
+        // Create exact position for insertion
+        const insertPos = new vscode.Position(lineNum, colNum);
+
+        // ONLY INSERT - do not delete or replace anything
+        editor.edit(builder => {
+            builder.insert(insertPos, textToCopy);
+        }, {
+            undoStopBefore: true,
+            undoStopAfter: true
+        }).then(success => {
+            if (success) {
+                // Move cursor to end of inserted text
+                const newPos = new vscode.Position(lineNum, colNum + textToCopy.length);
+                editor.selection = new vscode.Selection(newPos, newPos);
+            }
+        });
     });
     const toPad = vscode.commands.registerCommand('caser.toPad', () => {
         const editor = vscode.window.activeTextEditor;
