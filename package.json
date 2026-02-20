@@ -480,6 +480,10 @@
             {
                 "command": "caser.csvToMarkdownTable",
                 "title": "to-Table"
+            },
+            {
+                "command": "caser.toTree",
+                "title": "to-Hierarchy"
             }
         ]
     },

@@ -1940,6 +1940,113 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toTree = vscode.commands.registerCommand('caser.toTree', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selections = editor.selections;
+
+            editor.edit(builder => {
+                for (const selection of selections) {
+                    const text = document.getText(selection);
+                    const lines = text.split('\n');
+
+                    if (lines.length === 0) {
+                        return;
+                    }
+
+                    // Detect indentation pattern and parse lines
+                    interface LineInfo {
+                        level: number;
+                        content: string;
+                        originalLine: string;
+                    }
+
+                    const parsedLines: LineInfo[] = [];
+                    let indentPattern: number | null = null;
+
+                    for (const line of lines) {
+                        if (line.trim().length === 0) {
+                            continue;
+                        }
+
+                        // Count leading whitespace/indentation
+                        const match = line.match(/^(\s*)/);
+                        const leadingSpace = match ? match[1].length : 0;
+                        const content = line.trim();
+
+                        // Determine indentation pattern from first indented line
+                        if (indentPattern === null && leadingSpace > 0) {
+                            indentPattern = leadingSpace;
+                        }
+
+                        const level = indentPattern && indentPattern > 0 ? Math.floor(leadingSpace / indentPattern) : 0;
+
+                        parsedLines.push({
+                            level,
+                            content,
+                            originalLine: line
+                        });
+                    }
+
+                    // Build tree structure
+                    const treeLines: string[] = [];
+
+                    for (let i = 0; i < parsedLines.length; i++) {
+                        const current = parsedLines[i];
+                        let prefix = '';
+
+                        // Build prefix based on hierarchy
+                        for (let level = 0; level < current.level; level++) {
+                            // Check if this level has more items after current line
+                            let hasMoreAtLevel = false;
+                            for (let j = i + 1; j < parsedLines.length; j++) {
+                                if (parsedLines[j].level < level) {
+                                    break;
+                                }
+                                if (parsedLines[j].level === level) {
+                                    hasMoreAtLevel = true;
+                                    break;
+                                }
+                            }
+
+                            if (hasMoreAtLevel) {
+                                prefix += '│   ';
+                            } else {
+                                prefix += '    ';
+                            }
+                        }
+
+                        // Determine branch character for current level
+                        if (current.level > 0) {
+                            // Check if this is the last item at this level
+                            let isLast = true;
+                            for (let j = i + 1; j < parsedLines.length; j++) {
+                                if (parsedLines[j].level < current.level) {
+                                    break;
+                                }
+                                if (parsedLines[j].level === current.level) {
+                                    isLast = false;
+                                    break;
+                                }
+                            }
+
+                            if (isLast) {
+                                prefix += '└── ';
+                            } else {
+                                prefix += '├── ';
+                            }
+                        }
+
+                        treeLines.push(prefix + current.content);
+                    }
+
+                    const newText = treeLines.join('\n');
+                    builder.replace(selection, newText);
+                }
+            });
+        }
+    });
     const toPad = vscode.commands.registerCommand('caser.toPad', () => {
         const editor = vscode.window.activeTextEditor;
         // for each selection
@@ -2379,6 +2486,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toUnix);
     context.subscriptions.push(toTogglePipeComma);
     context.subscriptions.push(csvToMarkdownTable);
+    context.subscriptions.push(toTree);
     context.subscriptions.push(selectByRegex);
     context.subscriptions.push(toNewLine);
     context.subscriptions.push(toMath);
