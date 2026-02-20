@@ -94,7 +94,7 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 
 ### Formatting and selection   
 
-| key      | method            |notes         | 
+| key       | method                |notes                                                                                        |                                     |
 | --------- | --------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------- |
 | `cs E`    | to-Escaped       (l)  |                                                                                             |                                     | 
 | `as E`    | to-UnEscaped     (l)  |                                                                                             |                                     | 
