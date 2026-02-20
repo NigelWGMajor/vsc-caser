@@ -490,43 +490,34 @@ export function activate(context: vscode.ExtensionContext) {
         // set the editor to the new selections
 
     }
-    async function DoSymbols(
-        editor: vscode.TextEditor,
+    function ComputeSymbolReplacement(
+        text: string,
         fromSet: string[],
-        removeSet: string[],
-        selection: vscode.Selection
-    ) {
-        const document = editor.document;
-        //const selections = editor.selections;
-        await editor.edit(builder => {
-            //for (const selection of selections) {
-            // Get the text of the selection
-            const text = document.getText(selection);
-            var newText = text;
-            let didReplace = false;
-            for (const symbol of fromSet) {
-                // If the text starts with the symbol, replace it
-                if (newText.startsWith(symbol)) {
-                    let ix = (fromSet.indexOf(symbol) + 1) % fromSet.length;
-                    for (const removeSymbol of removeSet) {
-                        if (removeSymbol !== symbol) {
-                            newText = newText.replace(removeSymbol, '');
-                        }
-                    }
-                    newText = newText.replace(symbol, fromSet[ix]);
-                    didReplace = true;
-                    break; // Exit the loop once a match is found
-                }
-            }
-            if (!didReplace) {
+        removeSet: string[]
+    ): string {
+        var newText = text;
+        let didReplace = false;
+        for (const symbol of fromSet) {
+            // If the text starts with the symbol, replace it
+            if (newText.startsWith(symbol)) {
+                let ix = (fromSet.indexOf(symbol) + 1) % fromSet.length;
                 for (const removeSymbol of removeSet) {
-                    newText = newText.replace(removeSymbol, '');
+                    if (removeSymbol !== symbol) {
+                        newText = newText.replace(removeSymbol, '');
+                    }
                 }
-                newText = fromSet[0] + ' ' + newText;
+                newText = newText.replace(symbol, fromSet[ix]);
+                didReplace = true;
+                break; // Exit the loop once a match is found
             }
-            // Replace the selection with the updated text
-            builder.replace(selection, newText);
-        });
+        }
+        if (!didReplace) {
+            for (const removeSymbol of removeSet) {
+                newText = newText.replace(removeSymbol, '');
+            }
+            newText = fromSet[0] + ' ' + newText;
+        }
+        return newText;
     }
     function atStartSpaced(
         editor: vscode.TextEditor,
@@ -1545,9 +1536,15 @@ export function activate(context: vscode.ExtensionContext) {
         const setD = config.get<string[]>('queryIcons', ["❓", "⁉️", "❌", "❗", "‼️", "🛑"]);
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
-            for (const selection of editor.selections) {
-                DoSymbols(editor, setD, setAll, AdjustSelectionForPrefix(editor, selection));
-            }
+            const document = editor.document;
+            editor.edit(builder => {
+                for (const selection of editor.selections) {
+                    const adjustedSelection = AdjustSelectionForPrefix(editor, selection);
+                    const text = document.getText(adjustedSelection);
+                    const newText = ComputeSymbolReplacement(text, setD, setAll);
+                    builder.replace(adjustedSelection, newText);
+                }
+            });
         }
     });
     const selectByRegex = vscode.commands.registerCommand('caser.selectByRegex', async () => {
@@ -1647,17 +1644,15 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             // if line starts with one of the set characters, replace it with the subsequent character
-            editor.edit(async builder => {
+            editor.edit(builder => {
                 for (const selection of newSelections) {
                     var line = document.getText(selection);
                     const fullLine = document.lineAt(selection.start.line).text;
                     let isHeading = fullLine.startsWith('#');
-                    if (isHeading) {
-                        await DoSymbols(editor, setA, setAll, selection);
-                    }
-                    else {
-                        await DoSymbols(editor, setB, setAll, selection);
-                    }
+                    const newText = isHeading
+                        ? ComputeSymbolReplacement(line, setA, setAll)
+                        : ComputeSymbolReplacement(line, setB, setAll);
+                    builder.replace(selection, newText);
                 }
             });
             editor.selections = newSelections;
@@ -1697,7 +1692,7 @@ export function activate(context: vscode.ExtensionContext) {
             await doSymbolsInPlace(editor, setA, setA);
         }
     });
-    const markStep = vscode.commands.registerCommand('caser.markStep', async () => {
+    const markStep = vscode.commands.registerCommand('caser.markStep', () => {
         const editor = vscode.window.activeTextEditor;
         const config = vscode.workspace.getConfiguration('caser');
         const setA = config.get<string[]>('squareIcons', ["🟥", "🟨", "🟩", "🟦", "✅", "❎"]);
@@ -1706,9 +1701,15 @@ export function activate(context: vscode.ExtensionContext) {
         const setD = config.get<string[]>('queryIcons', ["❓", "⁉️", "❌", "❗", "‼️", "🛑"]);
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
-            for (const selection of editor.selections) {
-                await DoSymbols(editor, setC, setAll, AdjustSelectionForPrefix(editor, selection));
-            }
+            const document = editor.document;
+            editor.edit(builder => {
+                for (const selection of editor.selections) {
+                    const adjustedSelection = AdjustSelectionForPrefix(editor, selection);
+                    const text = document.getText(adjustedSelection);
+                    const newText = ComputeSymbolReplacement(text, setC, setAll);
+                    builder.replace(adjustedSelection, newText);
+                }
+            });
         }
     });
     const markLink = vscode.commands.registerCommand('caser.markLink', async () => {

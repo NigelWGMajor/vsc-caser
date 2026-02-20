@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.30.",
-    "version": "1.0.30",
+    "description": "This is the README for extension \"caser\" version 1.0.31.",
+    "version": "1.0.31",
     "engines": {
         "vscode": "^1.92.2"
     },
