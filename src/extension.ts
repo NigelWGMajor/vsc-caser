@@ -1886,6 +1886,60 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const csvToMarkdownTable = vscode.commands.registerCommand('caser.csvToMarkdownTable', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selections = editor.selections;
+
+            editor.edit(builder => {
+                for (const selection of selections) {
+                    const text = document.getText(selection);
+                    const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+
+                    if (lines.length === 0) {
+                        return;
+                    }
+
+                    // Parse CSV rows
+                    const rows = lines.map(line => {
+                        return line.split(',').map(cell => cell.trim());
+                    });
+
+                    // Calculate column widths
+                    const columnWidths: number[] = [];
+                    for (const row of rows) {
+                        for (let i = 0; i < row.length; i++) {
+                            if (!columnWidths[i]) {
+                                columnWidths[i] = 0;
+                            }
+                            columnWidths[i] = Math.max(columnWidths[i], row[i].length);
+                        }
+                    }
+
+                    // Build markdown table
+                    const markdownLines: string[] = [];
+
+                    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+                        const row = rows[rowIndex];
+                        const paddedCells = row.map((cell, i) => {
+                            return cell.padEnd(columnWidths[i], ' ');
+                        });
+                        markdownLines.push('| ' + paddedCells.join(' | ') + ' |');
+
+                        // Add separator after first row (header)
+                        if (rowIndex === 0) {
+                            const separators = columnWidths.map(width => '-'.repeat(width));
+                            markdownLines.push('| ' + separators.join(' | ') + ' |');
+                        }
+                    }
+
+                    const newText = markdownLines.join('\n');
+                    builder.replace(selection, newText);
+                }
+            });
+        }
+    });
     const toPad = vscode.commands.registerCommand('caser.toPad', () => {
         const editor = vscode.window.activeTextEditor;
         // for each selection
@@ -2324,6 +2378,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toDos);
     context.subscriptions.push(toUnix);
     context.subscriptions.push(toTogglePipeComma);
+    context.subscriptions.push(csvToMarkdownTable);
     context.subscriptions.push(selectByRegex);
     context.subscriptions.push(toNewLine);
     context.subscriptions.push(toMath);
