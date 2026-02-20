@@ -488,6 +488,10 @@
             {
                 "command": "caser.toHeader",
                 "title": "to-Header"
+            },
+            {
+                "command": "caser.toContinue",
+                "title": "to-Continue-indent"
             }
         ]
     },

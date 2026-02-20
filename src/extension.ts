@@ -2095,6 +2095,73 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toContinue = vscode.commands.registerCommand('caser.toContinue', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selection = editor.selection;
+            const currentLine = document.lineAt(selection.active.line);
+            const lineText = currentLine.text;
+
+            // Detect prefix pattern: leading whitespace + optional list marker/symbol
+            let prefix = '';
+
+            // First, capture leading whitespace
+            const leadingWhitespaceMatch = lineText.match(/^(\s*)/);
+            const leadingWhitespace = leadingWhitespaceMatch ? leadingWhitespaceMatch[1] : '';
+
+            // Look for common list markers after whitespace
+            const afterWhitespace = lineText.substring(leadingWhitespace.length);
+
+            // Check for various list patterns
+            const listPatterns = [
+                /^([-+*•◦▪▫›»] )/,           // Bullet points with space
+                /^(\d+\.\s)/,                   // Numbered lists (1. 2. etc.)
+                /^([a-z]\.\s)/,                 // Letter lists (a. b. etc.)
+                /^([A-Z]\.\s)/,                 // Capital letter lists (A. B. etc.)
+                /^(\d+\)\s)/,                   // Numbered with paren (1) 2) etc.)
+                /^([\u2022-\u2043]\s)/,         // Various bullet unicode range
+                /^([\u2190-\u21FF]\s)/,         // Arrow symbols
+                /^([\u2600-\u26FF]\s)/,         // Misc symbols
+                /^([\u2700-\u27BF]\s)/,         // Dingbats
+                /^([\u1F300-\u1F9FF]\s)/,       // Emoji range (basic)
+                /^([\p{Emoji_Presentation}]\s)/u, // Unicode emoji
+                /^([^\w\s]\s)/,                 // Any non-word, non-space char followed by space
+            ];
+
+            let marker = '';
+            for (const pattern of listPatterns) {
+                const match = afterWhitespace.match(pattern);
+                if (match) {
+                    marker = match[1];
+                    break;
+                }
+            }
+
+            // Build the full prefix
+            prefix = leadingWhitespace + marker;
+
+            // Handle numbered lists - increment the number if detected
+            const numberedMatch = marker.match(/^(\d+)([\.\)])\s$/);
+            if (numberedMatch) {
+                const nextNumber = parseInt(numberedMatch[1]) + 1;
+                const separator = numberedMatch[2];
+                marker = `${nextNumber}${separator} `;
+                prefix = leadingWhitespace + marker;
+            }
+
+            // Insert new line with prefix
+            editor.edit(builder => {
+                const lineEnd = currentLine.range.end;
+                builder.insert(lineEnd, '\n' + prefix);
+            }).then(() => {
+                // Move cursor to end of new line (after prefix)
+                const newLine = selection.active.line + 1;
+                const newPosition = new vscode.Position(newLine, prefix.length);
+                editor.selection = new vscode.Selection(newPosition, newPosition);
+            });
+        }
+    });
     const toPad = vscode.commands.registerCommand('caser.toPad', () => {
         const editor = vscode.window.activeTextEditor;
         // for each selection
@@ -2536,6 +2603,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(csvToMarkdownTable);
     context.subscriptions.push(toTree);
     context.subscriptions.push(toHeader);
+    context.subscriptions.push(toContinue);
     context.subscriptions.push(selectByRegex);
     context.subscriptions.push(toNewLine);
     context.subscriptions.push(toMath);
