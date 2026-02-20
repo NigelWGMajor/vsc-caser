@@ -96,32 +96,33 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 
 | key      | method            |notes         | 
 | --------- | --------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `cs E`    | to-Escaped       (l)  |                                                                                             |
-| `as E`    | to-UnEscaped     (l)  |                                                                                             |
-| `as P`    | to-Pad           (l)  | Pads with spaces to widest part of selection and selects each line                          |
-| `as |`    | to-Pipe-or-Comma      | Toggles pipes or commas based on first in first line                                        |
-| `as T`    | to-Trim          (l)  | Trims trailing spaces and selects each line                                                 |
-| `as C`    | to-Compact       (l)  | removes most white space including newlines                                                 |
-| `as <`    | to-leading       (l)  | pushes a comma-separated list to leading commas multiline                                   |
-| `as >`    | to-trailing      (l)  | pushes a comma-separated list to training commas multiline                                  |
-| `as R`    | to-Select-by-Regex  s | elects based on regex                                                                       |
-| `as N`    | as New Line      (w)  | place each selection on a new line                                                          |
-| `as D`    | to-Dimmed             | toggles dimming on any line matched in the dimmableMatches setting for the current language |
+| `cs E`    | to-Escaped       (l)  |                                                                                             |                                     | 
+| `as E`    | to-UnEscaped     (l)  |                                                                                             |                                     | 
+| `as P`    | to-Pad           (l)  | Pads with spaces to widest part of selection and selects each line                          |                                     | 
+| `as |`    | to-Pipe-or-Comma      | Toggles pipes or commas based on first in first line                                        |                                     | 
+| `as T`    | to-Trim          (l)  | Trims trailing spaces and selects each line                                                 |                                     | 
+| `as C`    | to-Compact       (l)  | removes most white space including newlines                                                 |                                     | 
+| `as <`    | to-leading       (l)  | pushes a comma-separated list to leading commas multiline                                   |                                     | 
+| `as >`    | to-trailing      (l)  | pushes a comma-separated list to training commas multiline                                  |                                     | 
+| `as R`    | to-Select-by-Regex  s | elects based on regex                                                                       |                                     | 
+| `as N`    | as New Line      (w)  | place each selection on a new line                                                          |                                     | 
+| `as D`    | to-Dimmed             | toggles dimming on any line matched in the dimmableMatches setting for the current language |                                     | 
 | `a N`     | to-numeric-sequence   | inserts or replaces trailing numbers in-line in the sequence selected                       | starting with the first number or 1 |
-| `a O`     | to-Ordered            | orders a selected block by line alphabetically                                              |
-| `a D`     | to-ditto              | copies the item above word by word                                                          |
-| `a H`     | to-Hierarchy          | draws tree characters representing a hierarchy                                              |
-| `a T`     | to-table              | converts csv to a markdown table                                                            |
-| `a #`     | to-Header             | loops through header levels                                                                 |
-| `a enter` | to-continue-indented  | like ctrl+enter but replicates the current indent style and depth                           |
+| `a O`     | to-Ordered            | orders a selected block by line alphabetically                                              |                                     | 
+| `a D`     | to-ditto              | copies the item above word by word                                                          |                                     | 
+| `a H`     | to-Hierarchy          | draws tree characters representing a hierarchy                                              |                                     | 
+| `a T`     | to-table              | converts csv to a markdown table                                                            |                                     | 
+| `a #`     | to-Header             | loops through header levels                                                                 |                                     | 
+| `a enter` | to-continue-indented  | like ctrl+enter but replicates the current indent style and depth                           |                                     | 
+
 ### Dummy text
 
-| key      | method            |
+| key    | method     |
 | ------ | ---------- |
 | `as L` | LoremIpsum |
 
 ### Encryption
-| key      | method            |notes         |
+| key    | method  | notes                                                |
 | ------ | ------- | ---------------------------------------------------- |
 | `cs ?` | to-Flip | (uses local environment variable VSCODE_KEY as seed) |
 
@@ -150,9 +151,9 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 | `ac L` | markLink    | [🔗]() [🔖](#)  [🎟️]()  [🔀]()  [ℹ️]()  [⏪]()  [⏩]()            |
 | `ac P` | to-End      | pushes content to end         | If starts with a header             |
 |        |             |                               |that is moved and a link inserted.   |
-| `ac F` | to-File     | Top line must have file link `[a](./filename.md)`| (this remains)     |
-|        |             |                      - the rest moves to that file, link remains. |
-|        |             |      - Repeat to append to file. File is opened and updated.      |
+| `ac F` | to-File     | Top line must have file link `[a](./filename.md)`| (this remains)   |
+|        |             |                      - the rest moves to that file, link remains.   |
+|        |             |      - Repeat to append to file. File is opened and updated.        |
 
 ### Bucketed save/load
 
