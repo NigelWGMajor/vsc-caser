@@ -484,6 +484,10 @@
             {
                 "command": "caser.toTree",
                 "title": "to-Hierarchy"
+            },
+            {
+                "command": "caser.toHeader",
+                "title": "to-Header"
             }
         ]
     },

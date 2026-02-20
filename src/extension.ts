@@ -2047,6 +2047,54 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toHeader = vscode.commands.registerCommand('caser.toHeader', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selections = editor.selections;
+
+            editor.edit(builder => {
+                for (const selection of selections) {
+                    const startLine = selection.start.line;
+                    const endLine = selection.end.line;
+
+                    for (let lineNum = startLine; lineNum <= endLine; lineNum++) {
+                        const line = document.lineAt(lineNum);
+                        const lineText = line.text;
+
+                        // Check if line starts with markdown header
+                        const headerMatch = lineText.match(/^(#{1,5})\s+(.*)$/);
+
+                        let newText: string;
+
+                        if (headerMatch) {
+                            const currentLevel = headerMatch[1].length;
+                            const content = headerMatch[2];
+
+                            if (currentLevel >= 5) {
+                                // At max level, remove header
+                                newText = content;
+                            } else {
+                                // Increment header level
+                                newText = '#'.repeat(currentLevel + 1) + ' ' + content;
+                            }
+                        } else {
+                            // No header, add level 1
+                            const trimmedText = lineText.trim();
+                            if (trimmedText.length > 0) {
+                                const leadingWhitespace = lineText.match(/^(\s*)/)?.[1] || '';
+                                newText = leadingWhitespace + '# ' + trimmedText;
+                            } else {
+                                newText = lineText;
+                            }
+                        }
+
+                        builder.replace(line.range, newText);
+                    }
+                }
+            });
+        }
+    });
     const toPad = vscode.commands.registerCommand('caser.toPad', () => {
         const editor = vscode.window.activeTextEditor;
         // for each selection
@@ -2487,6 +2535,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTogglePipeComma);
     context.subscriptions.push(csvToMarkdownTable);
     context.subscriptions.push(toTree);
+    context.subscriptions.push(toHeader);
     context.subscriptions.push(selectByRegex);
     context.subscriptions.push(toNewLine);
     context.subscriptions.push(toMath);
