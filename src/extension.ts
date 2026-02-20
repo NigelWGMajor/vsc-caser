@@ -2162,6 +2162,75 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toDitto = vscode.commands.registerCommand('caser.toDitto', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selection = editor.selection;
+            const currentLineNum = selection.active.line;
+
+            // Can't ditto if on first line
+            if (currentLineNum === 0) {
+                return;
+            }
+
+            const lineAbove = document.lineAt(currentLineNum - 1);
+            const currentLine = document.lineAt(currentLineNum);
+            const aboveText = lineAbove.text;
+            const currentText = currentLine.text;
+
+            // If current line already matches line above, do nothing
+            if (currentText === aboveText) {
+                return;
+            }
+
+            // Find where current text diverges from line above
+            // Current text should be a prefix of line above for ditto to make sense
+            if (!aboveText.startsWith(currentText)) {
+                // Current line doesn't match beginning of line above
+                // Start fresh from beginning of line above
+                const nextWordMatch = aboveText.match(/^(\s*\S+[\s,.!?;:]*)/);
+                if (nextWordMatch) {
+                    const textToCopy = nextWordMatch[1];
+                    editor.edit(builder => {
+                        builder.replace(currentLine.range, textToCopy);
+                    }).then(() => {
+                        const newPosition = new vscode.Position(currentLineNum, textToCopy.length);
+                        editor.selection = new vscode.Selection(newPosition, newPosition);
+                    });
+                }
+                return;
+            }
+
+            // Current line is a prefix of line above
+            // Find the next word to copy
+            const remainingText = aboveText.substring(currentText.length);
+
+            if (remainingText.length === 0) {
+                // Already copied everything
+                return;
+            }
+
+            // Match next word with optional leading/trailing spaces and punctuation
+            // Pattern: optional spaces, then word characters, then optional punctuation, then optional trailing spaces
+            const nextWordMatch = remainingText.match(/^(\s*\S+?)([,.!?;:]*\s*)/);
+
+            if (nextWordMatch) {
+                const leadingAndWord = nextWordMatch[1];
+                const punctuationAndSpaces = nextWordMatch[2];
+                const textToCopy = leadingAndWord + punctuationAndSpaces;
+
+                const newText = currentText + textToCopy;
+
+                editor.edit(builder => {
+                    builder.replace(currentLine.range, newText);
+                }).then(() => {
+                    const newPosition = new vscode.Position(currentLineNum, newText.length);
+                    editor.selection = new vscode.Selection(newPosition, newPosition);
+                });
+            }
+        }
+    });
     const toPad = vscode.commands.registerCommand('caser.toPad', () => {
         const editor = vscode.window.activeTextEditor;
         // for each selection
@@ -2604,6 +2673,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTree);
     context.subscriptions.push(toHeader);
     context.subscriptions.push(toContinue);
+    context.subscriptions.push(toDitto);
     context.subscriptions.push(selectByRegex);
     context.subscriptions.push(toNewLine);
     context.subscriptions.push(toMath);

@@ -492,6 +492,10 @@
             {
                 "command": "caser.toContinue",
                 "title": "to-Continue-indent"
+            },
+            {
+                "command": "caser.toDitto",
+                "title": "to-Ditto"
             }
         ]
     },
