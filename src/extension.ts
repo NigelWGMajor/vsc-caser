@@ -1902,10 +1902,32 @@ export function activate(context: vscode.ExtensionContext) {
                         return;
                     }
 
-                    // Parse CSV rows
-                    const rows = lines.map(line => {
-                        return line.split(',').map(cell => cell.trim());
-                    });
+                    // Detect if input is already a markdown table (contains pipes)
+                    const isMarkdownTable = lines[0].includes('|');
+                    let rows: string[][];
+
+                    if (isMarkdownTable) {
+                        // Parse markdown table rows
+                        rows = [];
+                        for (let i = 0; i < lines.length; i++) {
+                            const line = lines[i];
+                            // Check if this is a separator row (contains only |, -, and spaces)
+                            if (/^\|[\s\-|]+\|$/.test(line)) {
+                                continue; // Skip separator row
+                            }
+                            // Split by pipes and trim, removing first and last empty elements
+                            const cells = line.split('|').map((cell: string) => cell.trim()).filter((cell: string, idx: number, arr: string[]) => {
+                                // Remove first and last elements if they're empty (from leading/trailing pipes)
+                                return !(idx === 0 && cell === '') && !(idx === arr.length - 1 && cell === '');
+                            });
+                            rows.push(cells);
+                        }
+                    } else {
+                        // Parse CSV rows
+                        rows = lines.map((line: string) => {
+                            return line.split(',').map((cell: string) => cell.trim());
+                        });
+                    }
 
                     // Calculate column widths
                     const columnWidths: number[] = [];
@@ -1920,6 +1942,7 @@ export function activate(context: vscode.ExtensionContext) {
 
                     // Build markdown table
                     const markdownLines: string[] = [];
+                    const isSingleRow = rows.length === 1 && !isMarkdownTable;
 
                     for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
                         const row = rows[rowIndex];
@@ -1928,8 +1951,8 @@ export function activate(context: vscode.ExtensionContext) {
                         });
                         markdownLines.push('| ' + paddedCells.join(' | ') + ' |');
 
-                        // Add separator after first row (header)
-                        if (rowIndex === 0) {
+                        // Add separator after first row (header) unless it's a single CSV row
+                        if (rowIndex === 0 && !isSingleRow) {
                             const separators = columnWidths.map(width => '-'.repeat(width));
                             markdownLines.push('| ' + separators.join(' | ') + ' |');
                         }

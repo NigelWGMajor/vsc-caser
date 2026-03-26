@@ -1,6 +1,6 @@
 # caser README
 
-This is the README for extension "caser" v 1.0.31
+This is the README for extension "caser" v 1.0.33
 
 ## Building and Running
 
@@ -111,7 +111,7 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 | `a O`     | to-Ordered            | orders a selected block by line alphabetically                                              |                                     | 
 | `a D`     | to-ditto              | copies the item above word by word                                                          |                                     | 
 | `a H`     | to-Hierarchy          | draws tree characters representing a hierarchy                                              |                                     | 
-| `a T`     | to-table              | converts csv to a markdown table                                                            |                                     | 
+| `a T`     | to-table              | converts csv to a markdown table, justifies a md table or delimits a single csv row         |                                     | 
 | `a #`     | to-Header             | loops through header levels                                                                 |                                     | 
 | `a enter` | to-continue-indented  | like ctrl+enter but replicates the current indent style and depth                           |                                     | 
 
