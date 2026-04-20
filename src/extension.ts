@@ -9,6 +9,17 @@ import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
 
 type BucketSpan = 'day' | 'week' | 'month' | 'quarter' | 'year';
+type LinkTemplate = {
+    symbol: string;
+    defaultTarget: string;
+};
+
+type MarkedLinkMatch = {
+    range: vscode.Range;
+    symbol: string;
+    label: string;
+    target: string;
+};
 
 class BucketFolderService {
     private static readonly lastFolderKey = 'caser.bucket.lastFolder';
@@ -292,6 +303,137 @@ export function activate(context: vscode.ExtensionContext) {
             return new vscode.Selection(line.range.start, line.range.end);
         }
         return selection;
+    }
+    function selectionToLineNumbers(selection: vscode.Selection): number[] {
+        let startLine = selection.start.line;
+        let endLine = selection.end.line;
+
+        // A multi-line selection ending at column 0 should not process the trailing line.
+        if (!selection.isEmpty && selection.end.character === 0 && endLine > startLine) {
+            endLine--;
+        }
+
+        const lines: number[] = [];
+        for (let line = startLine; line <= endLine; line++) {
+            lines.push(line);
+        }
+        return lines;
+    }
+    function getAdjustedUniqueLineSelections(
+        editor: vscode.TextEditor,
+        selections: readonly vscode.Selection[]
+    ): vscode.Selection[] {
+        const uniqueSelections: vscode.Selection[] = [];
+        const seenLines = new Set<number>();
+
+        for (const selection of selections) {
+            for (const line of selectionToLineNumbers(selection)) {
+                if (seenLines.has(line)) {
+                    continue;
+                }
+                seenLines.add(line);
+                const lineSelection = new vscode.Selection(line, 0, line, 0);
+                uniqueSelections.push(AdjustSelectionForPrefix(editor, lineSelection));
+            }
+        }
+
+        return uniqueSelections;
+    }
+    async function applyLineMarking(
+        editor: vscode.TextEditor,
+        buildReplacement: (selection: vscode.Selection) => string
+    ): Promise<void> {
+        const document = editor.document;
+        const targetSelections = getAdjustedUniqueLineSelections(editor, editor.selections);
+
+        await editor.edit(builder => {
+            for (const selection of targetSelections) {
+                builder.replace(selection, buildReplacement(selection));
+            }
+        });
+
+        editor.selections = targetSelections.map(selection => {
+            const lineEnd = document.lineAt(selection.start.line).range.end;
+            return new vscode.Selection(lineEnd, lineEnd);
+        });
+    }
+    function parseLinkTemplate(template: string): LinkTemplate {
+        const match = template.match(/^\[(.*)\]\((.*)\)$/);
+        return {
+            symbol: match?.[1] ?? template,
+            defaultTarget: match?.[2] ?? ''
+        };
+    }
+    function normalizeInlineText(text: string): string {
+        return text.replace(/\r?\n/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    function escapeRegExp(text: string): string {
+        return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+    function buildMarkedLinkRegex(templates: LinkTemplate[]): RegExp {
+        const symbols = templates.map(template => escapeRegExp(template.symbol)).join('|');
+        return new RegExp(`\\[(${symbols})(?:\\s([^\\]]*))?\\]\\(([^)]*)\\)`, 'g');
+    }
+    function findMarkedLinkMatch(
+        editor: vscode.TextEditor,
+        selection: vscode.Selection,
+        templates: LinkTemplate[]
+    ): MarkedLinkMatch | undefined {
+        if (selection.start.line !== selection.end.line) {
+            return undefined;
+        }
+
+        const line = editor.document.lineAt(selection.start.line);
+        const lineStartOffset = editor.document.offsetAt(line.range.start);
+        const selectionStartOffset = editor.document.offsetAt(selection.start);
+        const selectionEndOffset = editor.document.offsetAt(selection.end);
+        const regex = buildMarkedLinkRegex(templates);
+
+        let match: RegExpExecArray | null;
+        while ((match = regex.exec(line.text)) !== null) {
+            const matchStartOffset = lineStartOffset + match.index;
+            const matchEndOffset = matchStartOffset + match[0].length;
+            const overlaps = selection.isEmpty
+                ? selectionStartOffset >= matchStartOffset && selectionStartOffset <= matchEndOffset
+                : !(selectionEndOffset <= matchStartOffset || selectionStartOffset >= matchEndOffset);
+
+            if (!overlaps) {
+                continue;
+            }
+
+            return {
+                range: new vscode.Range(
+                    editor.document.positionAt(matchStartOffset),
+                    editor.document.positionAt(matchEndOffset)
+                ),
+                symbol: match[1] ?? '',
+                label: match[2] ?? '',
+                target: match[3] ?? ''
+            };
+        }
+
+        return undefined;
+    }
+    function cycleLinkTemplate(templates: LinkTemplate[], symbol: string): LinkTemplate {
+        const currentIndex = templates.findIndex(template => template.symbol === symbol);
+        if (currentIndex === -1) {
+            return templates[0];
+        }
+        return templates[(currentIndex + 1) % templates.length];
+    }
+    function buildLinkTarget(template: LinkTemplate, clipboardText: string): string {
+        const normalizedClipboard = normalizeInlineText(clipboardText);
+        if (!normalizedClipboard) {
+            return template.defaultTarget;
+        }
+        if (template.defaultTarget && !normalizedClipboard.startsWith(template.defaultTarget)) {
+            return template.defaultTarget + normalizedClipboard;
+        }
+        return normalizedClipboard;
+    }
+    function buildMarkedLink(template: LinkTemplate, label: string, target: string): string {
+        const bracketText = label ? `${template.symbol} ${label}` : template.symbol;
+        return `[${bracketText}](${target})`;
     }
     function defaultToWordSelected(editor: vscode.TextEditor | undefined) {
         if (!editor) {
@@ -1527,7 +1669,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
-    const markQuery = vscode.commands.registerCommand('caser.markQuery', () => {
+    const markQuery = vscode.commands.registerCommand('caser.markQuery', async () => {
         const editor = vscode.window.activeTextEditor;
         const config = vscode.workspace.getConfiguration('caser');
         const setA = config.get<string[]>('squareIcons', ["🟥", "🟨", "🟩", "🟦", "✅", "❎"]);
@@ -1537,13 +1679,9 @@ export function activate(context: vscode.ExtensionContext) {
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
             const document = editor.document;
-            editor.edit(builder => {
-                for (const selection of editor.selections) {
-                    const adjustedSelection = AdjustSelectionForPrefix(editor, selection);
-                    const text = document.getText(adjustedSelection);
-                    const newText = ComputeSymbolReplacement(text, setD, setAll);
-                    builder.replace(adjustedSelection, newText);
-                }
+            await applyLineMarking(editor, selection => {
+                const text = document.getText(selection);
+                return ComputeSymbolReplacement(text, setD, setAll);
             });
         }
     });
@@ -1606,7 +1744,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
-    const markLine = vscode.commands.registerCommand('caser.markLine', () => {
+    const markLine = vscode.commands.registerCommand('caser.markLine', async () => {
         const editor = vscode.window.activeTextEditor;
         const config = vscode.workspace.getConfiguration('caser');
         const setA = config.get<string[]>('squareIcons', ["🟥", "🟨", "🟩", "🟦", "✅", "❎"]);
@@ -1616,46 +1754,14 @@ export function activate(context: vscode.ExtensionContext) {
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
             const document = editor.document;
-            const newSelections: vscode.Selection[] = [];
-            const selections = editor.selections;
-            for (const selection of selections) {
-                // if the selection starts with one of the set characters, set the position there
-                const line = document.lineAt(selection.start.line);
-                const lineRange = line.range;
-                const lineText = document.getText(lineRange);
-                // get the index of the first matching character
-                const index = setAll.findIndex(char => lineText.startsWith(char));
-                if (index === -1) { // no match, need to adjust for any prefix
-                    const adjustedSelection = AdjustSelectionForPrefix(editor, selection);
-                    newSelections.push(adjustedSelection);
-                } else {
-                    //find the position of setA[index] in the line
-                    const ix = lineText.indexOf(setAll[index]);
-                    if (ix > -1) {
-                        // if found, extend the selection to include the markers
-                        const start = line.range.start.translate(0, ix);
-                        const end = line.range.end;
-                        newSelections.push(new vscode.Selection(start, end));
-                    } else {
-                        const adjustedSelection = AdjustSelectionForPrefix(editor, selection);
-                        newSelections.push(adjustedSelection);
-                    }
-                }
-            }
-
-            // if line starts with one of the set characters, replace it with the subsequent character
-            editor.edit(builder => {
-                for (const selection of newSelections) {
-                    var line = document.getText(selection);
-                    const fullLine = document.lineAt(selection.start.line).text;
-                    let isHeading = fullLine.startsWith('#');
-                    const newText = isHeading
-                        ? ComputeSymbolReplacement(line, setA, setAll)
-                        : ComputeSymbolReplacement(line, setB, setAll);
-                    builder.replace(selection, newText);
-                }
+            await applyLineMarking(editor, selection => {
+                const line = document.getText(selection);
+                const fullLine = document.lineAt(selection.start.line).text;
+                const isHeading = fullLine.startsWith('#');
+                return isHeading
+                    ? ComputeSymbolReplacement(line, setA, setAll)
+                    : ComputeSymbolReplacement(line, setB, setAll);
             });
-            editor.selections = newSelections;
         }
     });
     const markNumber = vscode.commands.registerCommand('caser.markNumber', async () => {
@@ -1673,7 +1779,11 @@ export function activate(context: vscode.ExtensionContext) {
         const config = vscode.workspace.getConfiguration('caser');
         const setA = config.get<string[]>('warnIcons', ["📌", "💥", "⚠️", "🪲", "🩹", "⏳"]);
         if (editor) {
-            await doSymbolsInPlace(editor, setA, setA);
+            const document = editor.document;
+            await applyLineMarking(editor, selection => {
+                const text = document.getText(selection);
+                return ComputeSymbolReplacement(text, setA, setA);
+            });
         }
     });
     const markUser = vscode.commands.registerCommand('caser.markUser', async () => {
@@ -1681,7 +1791,11 @@ export function activate(context: vscode.ExtensionContext) {
         const config = vscode.workspace.getConfiguration('caser');
         const setA = config.get<string[]>('userIcons', ["👬", "😁", "😞", "☘️", "🕊️", "🎗️"]);
         if (editor) {
-            await doSymbolsInPlace(editor, setA, setA);
+            const document = editor.document;
+            await applyLineMarking(editor, selection => {
+                const text = document.getText(selection);
+                return ComputeSymbolReplacement(text, setA, setA);
+            });
         }
     });
     const markRef = vscode.commands.registerCommand('caser.markRef', async () => {
@@ -1692,7 +1806,7 @@ export function activate(context: vscode.ExtensionContext) {
             await doSymbolsInPlace(editor, setA, setA);
         }
     });
-    const markStep = vscode.commands.registerCommand('caser.markStep', () => {
+    const markStep = vscode.commands.registerCommand('caser.markStep', async () => {
         const editor = vscode.window.activeTextEditor;
         const config = vscode.workspace.getConfiguration('caser');
         const setA = config.get<string[]>('squareIcons', ["🟥", "🟨", "🟩", "🟦", "✅", "❎"]);
@@ -1702,13 +1816,9 @@ export function activate(context: vscode.ExtensionContext) {
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
             const document = editor.document;
-            editor.edit(builder => {
-                for (const selection of editor.selections) {
-                    const adjustedSelection = AdjustSelectionForPrefix(editor, selection);
-                    const text = document.getText(adjustedSelection);
-                    const newText = ComputeSymbolReplacement(text, setC, setAll);
-                    builder.replace(adjustedSelection, newText);
-                }
+            await applyLineMarking(editor, selection => {
+                const text = document.getText(selection);
+                return ComputeSymbolReplacement(text, setC, setAll);
             });
         }
     });
@@ -1717,8 +1827,53 @@ export function activate(context: vscode.ExtensionContext) {
         const config = vscode.workspace.getConfiguration('caser');
         const setA = config.get<string[]>('linkIcons', ["[🔗]()", "[🔖](#)", "[🎟️]()", "[🔀]()", "[📚]()", "[⏪]()", "[⏩]()"]);
         if (editor) {
-            //AdjustSelectionsForPrefix(editor);
-            await doSymbolsInPlace(editor, setA, setA);
+            const document = editor.document;
+            const templates = setA.map(parseLinkTemplate);
+            const clipboardText = await vscode.env.clipboard.readText();
+            const selections = [...editor.selections];
+            const plans = selections.map((selection, index) => {
+                const existingLink = findMarkedLinkMatch(editor, selection, templates);
+                if (existingLink) {
+                    const nextTemplate = cycleLinkTemplate(templates, existingLink.symbol);
+                    const nextTarget = existingLink.target || buildLinkTarget(nextTemplate, clipboardText);
+                    return {
+                        index,
+                        range: existingLink.range,
+                        startOffset: document.offsetAt(existingLink.range.start),
+                        oldLength: document.getText(existingLink.range).length,
+                        newText: buildMarkedLink(nextTemplate, existingLink.label, nextTarget)
+                    };
+                }
+
+                const label = normalizeInlineText(document.getText(selection));
+                const template = templates[0];
+                return {
+                    index,
+                    range: selection,
+                    startOffset: document.offsetAt(selection.start),
+                    oldLength: document.getText(selection).length,
+                    newText: buildMarkedLink(template, label, buildLinkTarget(template, clipboardText))
+                };
+            }).sort((left, right) => left.startOffset - right.startOffset);
+
+            let cumulativeDelta = 0;
+            const finalOffsets = new Map<number, number>();
+            for (const plan of plans) {
+                finalOffsets.set(plan.index, plan.startOffset + cumulativeDelta + plan.newText.length);
+                cumulativeDelta += plan.newText.length - plan.oldLength;
+            }
+
+            await editor.edit(builder => {
+                for (const plan of plans) {
+                    builder.replace(plan.range, plan.newText);
+                }
+            });
+
+            editor.selections = selections.map((_, index) => {
+                const finalOffset = finalOffsets.get(index) ?? document.offsetAt(selections[index].end);
+                const position = editor.document.positionAt(finalOffset);
+                return new vscode.Selection(position, position);
+            });
         }
     });
     const markNone = vscode.commands.registerCommand('caser.markNone', () => {
