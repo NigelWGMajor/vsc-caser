@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.34.",
-    "version": "1.0.34",
+    "description": "This is the README for extension \"caser\" version 1.0.35.",
+    "version": "1.0.35",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -452,6 +452,10 @@
             {
                 "command": "caser.toNewLine",
                 "title": "to-NewLine"
+            },
+            {
+                "command": "caser.toMultiple",
+                "title": "to-Multiple"
             },
             {
                 "command": "caser.toTerminal",

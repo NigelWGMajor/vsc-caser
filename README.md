@@ -1,6 +1,6 @@
 # caser README
 
-This is the README for extension "caser" v 1.0.33
+This is the README for extension "caser" v 1.0.35
 
 ## Building and Running
 
@@ -106,6 +106,7 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 | `as >`    | to-trailing      (l)  | pushes a comma-separated list to training commas multiline                                  |                                     | 
 | `as R`    | to-Select-by-Regex  s | elects based on regex                                                                       |                                     | 
 | `as N`    | as New Line      (w)  | place each selection on a new line                                                          |                                     | 
+|  `a M`    | to-Multiple      (l)  | repeats selection inline, or current line when nothing is selected                          |                                     | 
 | `as D`    | to-Dimmed             | toggles dimming on any line matched in the dimmableMatches setting for the current language |                                     | 
 | `a N`     | to-numeric-sequence   | inserts or replaces trailing numbers in-line in the sequence selected                       | starting with the first number or 1 |
 | `a O`     | to-Ordered            | orders a selected block by line alphabetically                                              |                                     | 

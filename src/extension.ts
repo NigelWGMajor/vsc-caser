@@ -1532,6 +1532,66 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toMultiple = vscode.commands.registerCommand('caser.toMultiple', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const seenRanges = new Set<string>();
+        const plans: {
+            range: vscode.Range;
+            startOffset: number;
+            oldLength: number;
+            newText: string;
+        }[] = [];
+
+        for (const selection of editor.selections) {
+            const range = defaultToLineSelected(editor, selection);
+            const startOffset = document.offsetAt(range.start);
+            const endOffset = document.offsetAt(range.end);
+            const rangeKey = `${startOffset}:${endOffset}`;
+
+            if (seenRanges.has(rangeKey)) {
+                continue;
+            }
+            seenRanges.add(rangeKey);
+
+            const text = document.getText(range);
+            plans.push({
+                range,
+                startOffset,
+                oldLength: endOffset - startOffset,
+                newText: text + text
+            });
+        }
+
+        plans.sort((left, right) => left.startOffset - right.startOffset);
+
+        const finalOffsets: number[] = [];
+        let cumulativeDelta = 0;
+        for (const plan of plans) {
+            finalOffsets.push(plan.startOffset + cumulativeDelta + plan.newText.length);
+            cumulativeDelta += plan.newText.length - plan.oldLength;
+        }
+
+        const success = await editor.edit(builder => {
+            for (const plan of plans) {
+                builder.replace(plan.range, plan.newText);
+            }
+        });
+
+        if (!success) {
+            return;
+        }
+
+        editor.selections = finalOffsets.map(finalOffset => {
+            const textEnd = document.positionAt(finalOffset);
+            const lineEnd = document.lineAt(textEnd.line).range.end;
+            return new vscode.Selection(lineEnd, lineEnd);
+        });
+    });
     const toClear = vscode.commands.registerCommand('caser.toClear', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -2874,7 +2934,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toDitto);
     context.subscriptions.push(selectByRegex);
     context.subscriptions.push(toNewLine);
-    context.subscriptions.push(toMath);
+    context.subscriptions.push(toMultiple);
+    context.subscriptions.push(toMath);    context.subscriptions.push(toMath);
     context.subscriptions.push(toClipboard);
     context.subscriptions.push(toDimmed);
     context.subscriptions.push(quickRef);
