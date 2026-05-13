@@ -2,7 +2,7 @@
     "name": "caser",
     "displayName": "Caser",
     "description": "This is the README for extension \"caser\" version 1.0.35.",
-    "version": "1.0.35",
+    "version": "1.0.36",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -548,6 +548,7 @@
     },
     "overrides": {
         "xml2js": "^0.6.2",
-        "serialize-javascript": "^7.0.5"
+        "serialize-javascript": "^7.0.5",
+        "fast-uri": "3.1.2"
     }
 }
