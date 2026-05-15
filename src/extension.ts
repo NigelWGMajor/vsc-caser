@@ -314,7 +314,8 @@ export function activate(context: vscode.ExtensionContext) {
             const line = editor.document.lineAt(selection.start.line);
             return new vscode.Selection(line.range.start, line.range.end);
         }
-        const word = editor.document.getWordRangeAtPosition(selection.start);
+        const word = editor.document.getWordRangeAtPosition(selection.start)
+            ?? editor.document.getWordRangeAtPosition(selection.start.translate(0, -1));
         if (word) {
             return new vscode.Selection(word.start, word.end);
         }
@@ -1485,16 +1486,17 @@ export function activate(context: vscode.ExtensionContext) {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             const document = editor.document;
-            const selections = editor.selections.map(selection => defaultToOtherCaseSelected(editor, selection));
-            editor.selections = selections;
-            const selectedTexts = selections.map(selection => document.getText(selection));
+            const selections = editor.selections;
+            const adjustedSelections = selections.map(selection => defaultToOtherCaseSelected(editor, selection));
+            const selectedTexts = adjustedSelections.map(selection => document.getText(selection));
             const sharedState = getSharedOtherCaseState(selectedTexts);
+
             editor.edit(builder => {
-                for (let index = 0; index < selections.length; index++) {
-                    const selection = selections[index];
+                for (let index = 0; index < adjustedSelections.length; index++) {
+                    const adjustedSelection = adjustedSelections[index];
                     const text = selectedTexts[index] ?? '';
                     const newText = toNextOtherCase(text, sharedState);
-                    builder.replace(selection, newText);
+                    builder.replace(adjustedSelection, newText);
                 }
             });
         }
