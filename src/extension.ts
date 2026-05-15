@@ -304,6 +304,22 @@ export function activate(context: vscode.ExtensionContext) {
         }
         return selection;
     }
+    function defaultToOtherCaseSelected(
+        editor: vscode.TextEditor,
+        selection: vscode.Selection): vscode.Selection {
+        if (!selection.isEmpty) {
+            return selection;
+        }
+        if (selection.start.character === 0) {
+            const line = editor.document.lineAt(selection.start.line);
+            return new vscode.Selection(line.range.start, line.range.end);
+        }
+        const word = editor.document.getWordRangeAtPosition(selection.start);
+        if (word) {
+            return new vscode.Selection(word.start, word.end);
+        }
+        return selection;
+    }
     function selectionToLineNumbers(selection: vscode.Selection): number[] {
         let startLine = selection.start.line;
         let endLine = selection.end.line;
@@ -435,6 +451,38 @@ export function activate(context: vscode.ExtensionContext) {
         const bracketText = label ? `${template.symbol} ${label}` : template.symbol;
         return `[${bracketText}](${target})`;
     }
+    type OtherCaseState = 'upper' | 'lower' | 'title';
+
+    function getOtherCaseState(text: string): OtherCaseState {
+        if (text === text.toUpperCase()) {
+            return 'upper';
+        }
+        if (text === text.toLowerCase()) {
+            return 'lower';
+        }
+        return 'title';
+    }
+
+    function getSharedOtherCaseState(texts: string[]): OtherCaseState {
+        const states = texts.map(getOtherCaseState);
+        const firstState = states[0] ?? 'title';
+        if (texts.length > 1 && states.some(state => state !== firstState)) {
+            return 'title';
+        }
+        return firstState;
+    }
+
+    function toNextOtherCase(text: string, state: OtherCaseState): string {
+        switch (state) {
+            case 'upper':
+                return text.toLowerCase();
+            case 'lower':
+                return titleCase(text);
+            case 'title':
+                return text.toUpperCase();
+        }
+    }
+
     function defaultToWordSelected(editor: vscode.TextEditor | undefined) {
         if (!editor) {
             return;
@@ -1436,25 +1484,17 @@ export function activate(context: vscode.ExtensionContext) {
     const toOtherCase = vscode.commands.registerCommand('caser.toOtherCase', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
-            defaultToWordSelected(editor);
             const document = editor.document;
-            const selections = editor.selections;
+            const selections = editor.selections.map(selection => defaultToOtherCaseSelected(editor, selection));
+            editor.selections = selections;
+            const selectedTexts = selections.map(selection => document.getText(selection));
+            const sharedState = getSharedOtherCaseState(selectedTexts);
             editor.edit(builder => {
-                for (const selection of selections) {
-                    const adjustedSelection = defaultToLineSelected(editor, selection);
-                    const text = document.getText(adjustedSelection);
-                    var newText;
-                    if (text === text.toUpperCase()) {
-                        newText = text.toLowerCase();
-                    }
-                    else if (text === text.toLowerCase()) {
-                        newText = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
-                        // make title case
-                    }
-                    else {
-                        newText = text.toUpperCase();
-                    }
-                    builder.replace(adjustedSelection, newText);
+                for (let index = 0; index < selections.length; index++) {
+                    const selection = selections[index];
+                    const text = selectedTexts[index] ?? '';
+                    const newText = toNextOtherCase(text, sharedState);
+                    builder.replace(selection, newText);
                 }
             });
         }
