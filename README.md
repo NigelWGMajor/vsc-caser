@@ -35,6 +35,41 @@ Suggested keybindings:
 
 **dimmableMatches** defines whether to dim lines matching tag definitions in the current language. This is used by the `to-Dimmed` command. This is an array of strings: each string starts with the target language id (e.g. `markdown` or `sql`) followed by one or more regex expressions, all seperated with colons. For example, to dim lines with `<pre` or `pre>` tags in markdown, you would set the property to: `markdown:<pre:pre>`. To dim lines with `--` in SQL, you would set the property to: `sql:--`. Only one string per language, but multiple regex expressions are supported.
 
+The general form is:
+
+```text
+languageId:regex1:regex2:regex3
+```
+Note:
+
+- `languageId` must match VS Code’s language id exactly, like `markdown`, `sql`, `typescript`.
+- Do **not** wrap regexes in `/.../g`; the extension does `new RegExp(pattern, 'g')`.
+- Because this lives in JSON, backslashes *must* be doubled: use `\\s`, `\\b`, `\\d`, etc.
+- Multiple regexes are separated with `:`, so avoid regexes that need a literal colon
+- The current implementation dims the matched text range. If you want the whole line dimmed, make the regex match the whole line.
+
+Examples:
+
+```json
+"caser.dimmableMatches": [
+  "markdown:<\\/?pre\\b[^>]*>:<\\/?code\\b[^>]*>",
+  "sql:^\\s*--.*$",
+  "typescript:^\\s*//.*$"
+]
+```
+
+For markdown HTML tags generally, this is a good test pattern:
+
+```text
+markdown:<\\/?[A-Za-z][^>]*>
+```
+
+For SQL comment lines:
+
+```text
+sql:^\\s*--.*$
+```
+
 **regexPatterns** lists useful regex patterns for use by the `Select by Regex` function.
 
 **quickRefPath** specifies the absolute path to a PDF file for quick reference access. If not set, defaults to `quick-reference.pdf` in the VSCode User folder (`%APPDATA%\Code\User\` on Windows, `~/.config/Code/User/` on Linux, `~/Library/Application Support/Code/User/` on macOS).
