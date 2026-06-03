@@ -1039,7 +1039,8 @@ export function activate(context: vscode.ExtensionContext) {
         editor.setDecorations(hideDecorationType, decorationsArray);
     }
     const hideDecorationType = vscode.window.createTextEditorDecorationType({
-        textDecoration: 'none; color: #8886;',
+        color: new vscode.ThemeColor('descriptionForeground'),
+        opacity: '0.45',
     });
 
     const toDimmed = vscode.commands.registerCommand('caser.toDimmed', () => {

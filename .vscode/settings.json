@@ -29,5 +29,6 @@
         "titleBar.inactiveForeground": "#e7e7e799"
     },
     "peacock.color": "448888",
-    "caser.dimTaggedDefinitions": []
+    "caser.dimTaggedDefinitions": [],
+    "caser.dimmableMatches": []
 }

@@ -44,7 +44,8 @@ Note:
 
 - `languageId` must match VS Code’s language id exactly, like `markdown`, `sql`, `typescript`.
 - Do **not** wrap regexes in `/.../g`; the extension does `new RegExp(pattern, 'g')`.
-- Because this lives in JSON, backslashes *must* be doubled: use `\\s`, `\\b`, `\\d`, etc.
+- if editing the json directly, backslashes *must* be doubled: use `\\s`, `\\b`, `\\d`, etc.
+- if editing using the settings dialog, do not escape, as this will occur automatically.
 - Multiple regexes are separated with `:`, so avoid regexes that need a literal colon
 - The current implementation dims the matched text range. If you want the whole line dimmed, make the regex match the whole line.
 
