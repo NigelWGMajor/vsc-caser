@@ -2,7 +2,7 @@
     "name": "caser",
     "displayName": "Caser",
     "description": "This is the README for extension \"caser\" version 1.0.35.",
-    "version": "1.0.36",
+    "version": "1.0.37",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -460,6 +460,10 @@
             {
                 "command": "caser.toTerminal",
                 "title": "to-Terminal"
+            },
+            {
+                "command": "caser.toPowershell",
+                "title": "to-Powershell"
             },
             {
                 "command": "caser.toBash",

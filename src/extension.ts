@@ -310,12 +310,10 @@ export function activate(context: vscode.ExtensionContext) {
         if (!selection.isEmpty) {
             return selection;
         }
-        if (selection.start.character === 0) {
-            const line = editor.document.lineAt(selection.start.line);
-            return new vscode.Selection(line.range.start, line.range.end);
-        }
         const word = editor.document.getWordRangeAtPosition(selection.start)
-            ?? editor.document.getWordRangeAtPosition(selection.start.translate(0, -1));
+            ?? (selection.start.character > 0
+                ? editor.document.getWordRangeAtPosition(selection.start.translate(0, -1))
+                : undefined);
         if (word) {
             return new vscode.Selection(word.start, word.end);
         }
