@@ -37,16 +37,14 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(document.getText(), 'ab\tcd');
 	});
 
-	test('toIndent cycles a Markdown bullet through four spaces and removes it', async () => {
+	test('toIndent cycles a Markdown bullet in two-space steps and removes it', async () => {
 		const document = await vscode.workspace.openTextDocument({ content: 'item' });
 		const editor = await vscode.window.showTextDocument(document);
 		const cursor = new vscode.Position(0, 2);
 		editor.selection = new vscode.Selection(cursor, cursor);
 		const expectedLines = [
 			'- item',
-			' - item',
 			'  - item',
-			'   - item',
 			'    - item',
 			'item'
 		];
@@ -87,17 +85,22 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(document.getText(), original);
 	});
 
-	test('toOtherCase selects a touching word when the cursor is empty', async () => {
-		const document = await vscode.workspace.openTextDocument({ content: 'before word after' });
-		const editor = await vscode.window.showTextDocument(document);
-		const cursorAfterWord = new vscode.Position(0, 11);
-		editor.selection = new vscode.Selection(cursorAfterWord, cursorAfterWord);
+	test('toOtherCase selects the current or touching word when the cursor is empty', async () => {
+		for (const cursorCharacter of [7, 9, 11]) {
+			const document = await vscode.workspace.openTextDocument({
+				content: 'before word after',
+				language: 'markdown'
+			});
+			const editor = await vscode.window.showTextDocument(document);
+			const cursor = new vscode.Position(0, cursorCharacter);
+			editor.selection = new vscode.Selection(cursor, cursor);
 
-		await vscode.commands.executeCommand('caser.toOtherCase');
+			await vscode.commands.executeCommand('caser.toOtherCase');
 
-		assert.strictEqual(document.getText(), 'before Word after');
-		assert.strictEqual(editor.selection.isEmpty, false);
-		assert.strictEqual(document.getText(editor.selection), 'Word');
+			assert.strictEqual(document.getText(), 'before Word after');
+			assert.strictEqual(editor.selection.isEmpty, false);
+			assert.strictEqual(document.getText(editor.selection), 'Word');
+		}
 	});
 });
 

@@ -310,10 +310,19 @@ export function activate(context: vscode.ExtensionContext) {
         if (!selection.isEmpty) {
             return selection;
         }
-        const word = editor.document.getWordRangeAtPosition(selection.start)
-            ?? (selection.start.character > 0
-                ? editor.document.getWordRangeAtPosition(selection.start.translate(0, -1))
-                : undefined);
+        const cursor = selection.active;
+        const line = editor.document.lineAt(cursor.line);
+        const candidatePositions = [cursor];
+        if (cursor.character > 0) {
+            candidatePositions.push(cursor.translate(0, -1));
+        }
+        if (cursor.character < line.text.length) {
+            candidatePositions.push(cursor.translate(0, 1));
+        }
+
+        const word = candidatePositions
+            .map(position => editor.document.getWordRangeAtPosition(position))
+            .find(range => range?.contains(cursor));
         if (word) {
             return new vscode.Selection(word.start, word.end);
         }
@@ -505,7 +514,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         const indentation = bulletMatch[1];
         if (indentation.length < 4) {
-            return ' ' + lineText;
+            return '  ' + lineText;
         }
 
         return bulletMatch[2];
@@ -1645,6 +1654,8 @@ export function activate(context: vscode.ExtensionContext) {
                     builder.replace(adjustedSelection, newText);
                 }
             });
+
+            editor.selections = adjustedSelections;
         }
     });
     const toSpaceCase = vscode.commands.registerCommand('caser.toSpaceCase', () => {
