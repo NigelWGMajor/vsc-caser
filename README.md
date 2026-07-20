@@ -150,12 +150,14 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 | `a H`     | to-Hierarchy          | draws tree characters representing a hierarchy                                              |                                     | 
 | `a T`     | to-Table              | converts csv to a markdown table, justifies a md table or delimits a single csv row         |                                     | 
 | `a #`     | to-Header             | loops through header levels                                                                 |                                     | 
-| `a enter` | to-Continue-indented  | like ctrl+enter but replicates the current indent style and depth                           |                                     | 
-
+| `a enter` | to-Continue-indented  | like ctrl+enter but replicates the current indent style and depth  
+| `a -`     | to-Indent             | rotate through levels of indented bullet                        || 
+| `a /`     | to-Line-Comment       | insert special ad-hoc line comment non-destructively in markdown
 ### Dummy text
 
 | key    | method     |
 | ------ | ---------- |
+
 | `as L` | LoremIpsum |
 
 ### Encryption

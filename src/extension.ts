@@ -497,6 +497,81 @@ export function activate(context: vscode.ExtensionContext) {
     function stripWhiteSpace(text: string) {
         return text.replace(/\s{2,100}/g, ' ');
     }
+    function cycleMarkdownIndent(lineText: string): string {
+        const bulletMatch = lineText.match(/^([ \t]*)- (.*)$/);
+        if (!bulletMatch) {
+            return '- ' + lineText;
+        }
+
+        const indentation = bulletMatch[1];
+        if (indentation.length < 4) {
+            return ' ' + lineText;
+        }
+
+        return bulletMatch[2];
+    }
+    const specialLineCommentStart = '<!-- !! ';
+    const specialLineCommentEnd = ' !! -->';
+
+    function wrapLineCommentSegment(text: string): string {
+        const match = text.match(/^(\s*)(.*?\S)(\s*)$/);
+        if (!match) {
+            return text;
+        }
+
+        return match[1]
+            + specialLineCommentStart
+            + match[2]
+            + specialLineCommentEnd
+            + match[3];
+    }
+
+    function commentUncommentedLineSegments(
+        lineText: string,
+        startsInsideComment: boolean
+    ): { text: string; endsInsideComment: boolean } {
+        let result = '';
+        let offset = 0;
+        let insideComment = startsInsideComment;
+
+        while (offset < lineText.length) {
+            if (insideComment) {
+                const commentEnd = lineText.indexOf('-->', offset);
+                if (commentEnd === -1) {
+                    result += lineText.slice(offset);
+                    return { text: result, endsInsideComment: true };
+                }
+
+                result += lineText.slice(offset, commentEnd + 3);
+                offset = commentEnd + 3;
+                insideComment = false;
+                continue;
+            }
+
+            const commentStart = lineText.indexOf('<!--', offset);
+            const plainTextEnd = commentStart === -1 ? lineText.length : commentStart;
+            result += wrapLineCommentSegment(lineText.slice(offset, plainTextEnd));
+
+            if (commentStart === -1) {
+                return { text: result, endsInsideComment: false };
+            }
+
+            const commentEnd = lineText.indexOf('-->', commentStart + 4);
+            if (commentEnd === -1) {
+                result += lineText.slice(commentStart);
+                return { text: result, endsInsideComment: true };
+            }
+
+            result += lineText.slice(commentStart, commentEnd + 3);
+            offset = commentEnd + 3;
+        }
+
+        return { text: result, endsInsideComment: insideComment };
+    }
+
+    function removeSpecialLineComments(lineText: string): string {
+        return lineText.replace(/<!-- !! (.*?) !! -->/g, '$1');
+    }
     function NumericSequence(
         editor: vscode.TextEditor,
         selections: readonly vscode.Selection[]
@@ -1293,6 +1368,77 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toIndent = vscode.commands.registerCommand('caser.toIndent', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const lineNumbers = new Set<number>();
+        for (const selection of editor.selections) {
+            for (const lineNumber of selectionToLineNumbers(selection)) {
+                lineNumbers.add(lineNumber);
+            }
+        }
+
+        await editor.edit(builder => {
+            for (const lineNumber of lineNumbers) {
+                const line = document.lineAt(lineNumber);
+                builder.replace(line.range, cycleMarkdownIndent(line.text));
+            }
+        });
+    });
+    const toLineComment = vscode.commands.registerCommand('caser.toLineComment', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const targetLineNumbers = new Set<number>();
+        for (const selection of editor.selections) {
+            for (const lineNumber of selectionToLineNumbers(selection)) {
+                targetLineNumbers.add(lineNumber);
+            }
+        }
+
+        const sortedLineNumbers = [...targetLineNumbers].sort((a, b) => a - b);
+        if (sortedLineNumbers.length === 0) {
+            return;
+        }
+
+        const firstLineText = document.lineAt(sortedLineNumbers[0]).text;
+        const shouldUncomment = firstLineText.includes(specialLineCommentStart);
+        const replacements = new Map<number, string>();
+
+        if (shouldUncomment) {
+            for (const lineNumber of sortedLineNumbers) {
+                const lineText = document.lineAt(lineNumber).text;
+                replacements.set(lineNumber, removeSpecialLineComments(lineText));
+            }
+        }
+        else {
+            let insideComment = false;
+            for (let lineNumber = 0; lineNumber < document.lineCount; lineNumber++) {
+                const lineText = document.lineAt(lineNumber).text;
+                const transformation = commentUncommentedLineSegments(lineText, insideComment);
+                insideComment = transformation.endsInsideComment;
+                if (targetLineNumbers.has(lineNumber)) {
+                    replacements.set(lineNumber, transformation.text);
+                }
+            }
+        }
+
+        await editor.edit(builder => {
+            for (const [lineNumber, replacement] of replacements) {
+                const line = document.lineAt(lineNumber);
+                if (replacement !== line.text) {
+                    builder.replace(line.range, replacement);
+                }
+            }
+        });
+    });
     const toUnderScored = vscode.commands.registerCommand('caser.toUnderScored', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -1481,7 +1627,7 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
-    const toOtherCase = vscode.commands.registerCommand('caser.toOtherCase', () => {
+    const toOtherCase = vscode.commands.registerCommand('caser.toOtherCase', async () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             const document = editor.document;
@@ -1489,8 +1635,9 @@ export function activate(context: vscode.ExtensionContext) {
             const adjustedSelections = selections.map(selection => defaultToOtherCaseSelected(editor, selection));
             const selectedTexts = adjustedSelections.map(selection => document.getText(selection));
             const sharedState = getSharedOtherCaseState(selectedTexts);
+            editor.selections = adjustedSelections;
 
-            editor.edit(builder => {
+            await editor.edit(builder => {
                 for (let index = 0; index < adjustedSelections.length; index++) {
                     const adjustedSelection = adjustedSelections[index];
                     const text = selectedTexts[index] ?? '';
@@ -1709,10 +1856,30 @@ export function activate(context: vscode.ExtensionContext) {
                 if (selections.length === 1 && selections[0].isEmpty) {
                     const line = document.lineAt(selections[0].start.line);
                     const text = line.text;
-                    if (text.charAt(selections[0].start.character) === ' '
-                        || // the character before this one is a space
-                        text.charAt(selections[0].start.character - 1) === ' '
-                    ) {
+                    const cursorCharacter = selections[0].start.character;
+                    const characterBeforeCursor = text.charAt(cursorCharacter - 1);
+                    const characterAfterCursor = text.charAt(cursorCharacter);
+
+                    if (characterBeforeCursor !== ''
+                        && characterAfterCursor !== ''
+                        && /\S/.test(characterBeforeCursor)
+                        && /\S/.test(characterAfterCursor)) {
+                        const rangeBeforeCursor = new vscode.Range(
+                            selections[0].start.translate(0, -1),
+                            selections[0].start
+                        );
+                        const rangeAfterCursor = new vscode.Range(
+                            selections[0].start,
+                            selections[0].start.translate(0, 1)
+                        );
+
+                        editor.edit(builder => {
+                            builder.replace(rangeBeforeCursor, characterAfterCursor);
+                            builder.replace(rangeAfterCursor, characterBeforeCursor);
+                        });
+                    }
+                    else if (characterAfterCursor === ' '
+                        || characterBeforeCursor === ' ') {
                         // get the word after the space
                         const range1 = document.getWordRangeAtPosition(selections[0].start.translate(0, 1));
                         const range2 = document.getWordRangeAtPosition(selections[0].start.translate(0, -1));
@@ -1726,18 +1893,6 @@ export function activate(context: vscode.ExtensionContext) {
                                 builder.replace(range2, word1);
                             });
                         }
-                    }
-                    else if (selections.length === 1 && selections[0].isEmpty && selections[0].start.character > 0) {
-                        // exchange the letters at the cursor
-                        const range1 = new vscode.Range(selections[0].start, selections[0].start.translate(0, 1));
-                        const range2 = new vscode.Range(selections[0].start.translate(0, -1), selections[0].start);
-                        const text1 = document.getText(range1);
-                        const text2 = document.getText(range2);
-                        editor.edit(builder => {
-                            builder.replace(range1, text2);
-                            builder.replace(range2, text1);
-                        }
-                        );
                     }
                 }
                 else if (selections.length === 1 && !selections[0].isEmpty) {
@@ -2934,6 +3089,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toSquare);
     context.subscriptions.push(toNone);
     context.subscriptions.push(toStarred);
+    context.subscriptions.push(toIndent);
+    context.subscriptions.push(toLineComment);
     context.subscriptions.push(toUnderScored);
     context.subscriptions.push(toTilded);
     context.subscriptions.push(toClear);
