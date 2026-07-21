@@ -456,7 +456,7 @@ export function activate(context: vscode.ExtensionContext) {
         return normalizedClipboard;
     }
     function buildMarkedLink(template: LinkTemplate, label: string, target: string): string {
-        const bracketText = label ? `${template.symbol} ${label}` : template.symbol;
+        const bracketText = `${template.symbol} ${label}`;
         return `[${bracketText}](${target})`;
     }
     type OtherCaseState = 'upper' | 'lower' | 'title';
@@ -2108,6 +2108,8 @@ export function activate(context: vscode.ExtensionContext) {
                         range: existingLink.range,
                         startOffset: document.offsetAt(existingLink.range.start),
                         oldLength: document.getText(existingLink.range).length,
+                        symbol: nextTemplate.symbol,
+                        label: existingLink.label,
                         newText: buildMarkedLink(nextTemplate, existingLink.label, nextTarget)
                     };
                 }
@@ -2119,14 +2121,21 @@ export function activate(context: vscode.ExtensionContext) {
                     range: selection,
                     startOffset: document.offsetAt(selection.start),
                     oldLength: document.getText(selection).length,
+                    symbol: template.symbol,
+                    label,
                     newText: buildMarkedLink(template, label, buildLinkTarget(template, clipboardText))
                 };
             }).sort((left, right) => left.startOffset - right.startOffset);
 
             let cumulativeDelta = 0;
-            const finalOffsets = new Map<number, number>();
+            const finalTitleOffsets = new Map<number, { start: number; end: number }>();
             for (const plan of plans) {
-                finalOffsets.set(plan.index, plan.startOffset + cumulativeDelta + plan.newText.length);
+                const linkStartOffset = plan.startOffset + cumulativeDelta;
+                const titleStartOffset = linkStartOffset + 1 + plan.symbol.length + 1;
+                finalTitleOffsets.set(plan.index, {
+                    start: titleStartOffset,
+                    end: titleStartOffset + plan.label.length
+                });
                 cumulativeDelta += plan.newText.length - plan.oldLength;
             }
 
@@ -2137,9 +2146,15 @@ export function activate(context: vscode.ExtensionContext) {
             });
 
             editor.selections = selections.map((_, index) => {
-                const finalOffset = finalOffsets.get(index) ?? document.offsetAt(selections[index].end);
-                const position = editor.document.positionAt(finalOffset);
-                return new vscode.Selection(position, position);
+                const titleOffsets = finalTitleOffsets.get(index);
+                if (!titleOffsets) {
+                    const position = editor.document.positionAt(document.offsetAt(selections[index].end));
+                    return new vscode.Selection(position, position);
+                }
+                return new vscode.Selection(
+                    editor.document.positionAt(titleOffsets.start),
+                    editor.document.positionAt(titleOffsets.end)
+                );
             });
         }
     });
@@ -2212,6 +2227,105 @@ export function activate(context: vscode.ExtensionContext) {
             const target = document.lineAt(targetLineNumber).range.end;
             return new vscode.Selection(target, target);
         });
+    });
+    const toFence = vscode.commands.registerCommand('caser.toFence', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const defaultFenceTypes = ['cs', 'json', 'sql', 'ps', 'yaml', 'html', 'css', 'mermaid'];
+        const configuredFenceTypes = vscode.workspace.getConfiguration('caser')
+            .get<string[]>('fences', defaultFenceTypes)
+            .map(fenceType => fenceType.trim())
+            .filter(fenceType => fenceType.length > 0);
+        const fenceTypes = configuredFenceTypes.length > 0 ? configuredFenceTypes : defaultFenceTypes;
+        const document = editor.document;
+        const selection = editor.selection;
+        const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+        const fenceLinePattern = /^([ \t]*)```([^`\s]*)[ \t]*$/;
+        const nextFenceType = (currentFenceType: string): string => {
+            const currentIndex = fenceTypes.indexOf(currentFenceType);
+            return currentIndex === -1 ? fenceTypes[0] : fenceTypes[(currentIndex + 1) % fenceTypes.length];
+        };
+
+        if (!selection.isEmpty) {
+            const selectedText = document.getText(selection);
+            const openingLineText = selectedText.split(/\r?\n/, 1)[0];
+            const openingFence = openingLineText.match(fenceLinePattern);
+
+            if (openingFence) {
+                const replacement = `${openingFence[1]}\`\`\`${nextFenceType(openingFence[2])}`;
+                const selectionStartOffset = document.offsetAt(selection.start);
+                const selectionEndOffset = document.offsetAt(selection.end);
+                const openingRange = new vscode.Range(
+                    selection.start,
+                    document.positionAt(selectionStartOffset + openingLineText.length)
+                );
+                const delta = replacement.length - openingLineText.length;
+
+                await editor.edit(builder => builder.replace(openingRange, replacement));
+                editor.selection = new vscode.Selection(
+                    editor.document.positionAt(selectionStartOffset),
+                    editor.document.positionAt(selectionEndOffset + delta)
+                );
+                return;
+            }
+
+            const opening = `\`\`\`${fenceTypes[0]}${eol}`;
+            const closingPrefix = selectedText.endsWith('\n') ? '' : eol;
+            const replacement = opening + selectedText + closingPrefix + '```';
+            const selectionStartOffset = document.offsetAt(selection.start);
+
+            await editor.edit(builder => builder.replace(selection, replacement));
+            editor.selection = new vscode.Selection(
+                editor.document.positionAt(selectionStartOffset + opening.length),
+                editor.document.positionAt(selectionStartOffset + opening.length + selectedText.length)
+            );
+            return;
+        }
+
+        const currentLineNumber = selection.active.line;
+        const currentFence = document.lineAt(currentLineNumber).text.match(fenceLinePattern);
+        if (currentFence) {
+            let unmatchedOpeningLine: number | undefined;
+            for (let lineNumber = 0; lineNumber < currentLineNumber; lineNumber++) {
+                if (!fenceLinePattern.test(document.lineAt(lineNumber).text)) {
+                    continue;
+                }
+                unmatchedOpeningLine = unmatchedOpeningLine === undefined ? lineNumber : undefined;
+            }
+
+            const targetLineNumber = currentFence[2] === '' && unmatchedOpeningLine !== undefined
+                ? unmatchedOpeningLine
+                : currentLineNumber;
+            const targetLine = document.lineAt(targetLineNumber);
+            const targetFence = targetLine.text.match(fenceLinePattern);
+            if (!targetFence) {
+                return;
+            }
+
+            const replacement = `${targetFence[1]}\`\`\`${nextFenceType(targetFence[2])}`;
+            const originalCursor = selection.active;
+            await editor.edit(builder => builder.replace(targetLine.range, replacement));
+            const target = targetLineNumber === currentLineNumber
+                ? editor.document.lineAt(targetLineNumber).range.end
+                : originalCursor;
+            editor.selection = new vscode.Selection(target, target);
+            return;
+        }
+
+        const line = document.lineAt(selection.active.line);
+        const leadingEol = selection.active.character === 0 ? '' : eol;
+        const trailingEol = selection.active.character === line.text.length ? '' : eol;
+        const opening = `\`\`\`${fenceTypes[0]}${eol}`;
+        const replacement = leadingEol + opening + eol + '```' + trailingEol;
+        const insertionOffset = document.offsetAt(selection.active);
+        const contentOffset = insertionOffset + leadingEol.length + opening.length;
+
+        await editor.edit(builder => builder.insert(selection.active, replacement));
+        const contentPosition = editor.document.positionAt(contentOffset);
+        editor.selection = new vscode.Selection(contentPosition, contentPosition);
     });
     const toPrefixList = vscode.commands.registerCommand('caser.toPrefixList', () => {
         const editor = vscode.window.activeTextEditor;
@@ -3139,6 +3253,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTest);
     context.subscriptions.push(toEnd);
     context.subscriptions.push(toNextEnd);
+    context.subscriptions.push(toFence);
     context.subscriptions.push(toPrefixList);
     context.subscriptions.push(toOrder);
     context.subscriptions.push(toSuffixList);

@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.38.",
-    "version": "1.0.38",
+    "description": "This is the README for extension \"caser\" version 1.0.39.",
+    "version": "1.0.39",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -179,6 +179,23 @@
                         "[⏩]()"
                     ],
                     "description": "The set of icons used for marking links."
+                },
+                "caser.fences": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [
+                        "cs",
+                        "json",
+                        "sql",
+                        "ps",
+                        "yaml",
+                        "html",
+                        "css",
+                        "mermaid"
+                    ],
+                    "description": "The language identifiers cycled by to-Fence. The first value is used for new fenced blocks."
                 },
                 "caser.userIcons": {
                     "type": "array",
@@ -400,6 +417,10 @@
             {
                 "command": "caser.toNextEnd",
                 "title": "to-NextEnd"
+            },
+            {
+                "command": "caser.toFence",
+                "title": "to-Fence"
             },
             {
                 "command": "caser.toPrefixList",

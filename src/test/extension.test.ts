@@ -125,6 +125,85 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('caser.toNextEnd');
 		assert.deepStrictEqual(editor.selection.active, lineEnd);
 	});
+
+	test('markLink selects the title after inserting a link', async () => {
+		await vscode.env.clipboard.writeText('https://example.test');
+		const document = await vscode.workspace.openTextDocument({ content: 'My title' });
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(0).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.markLink');
+
+		assert.strictEqual(document.getText(), '[🔗 My title](https://example.test)');
+		assert.strictEqual(document.getText(editor.selection), 'My title');
+	});
+
+	test('markLink places the cursor in an empty title', async () => {
+		await vscode.env.clipboard.writeText('https://example.test');
+		const document = await vscode.workspace.openTextDocument({ content: '' });
+		const editor = await vscode.window.showTextDocument(document);
+
+		await vscode.commands.executeCommand('caser.markLink');
+
+		assert.strictEqual(document.getText(), '[🔗 ](https://example.test)');
+		assert.strictEqual(editor.selection.isEmpty, true);
+		assert.strictEqual(document.offsetAt(editor.selection.active), '[🔗 '.length);
+	});
+
+	test('toFence wraps selected text and keeps its content selected', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: 'fenced content' });
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(0).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.toFence');
+
+		const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+		assert.strictEqual(document.getText(), ['```cs', 'fenced content', '```'].join(eol));
+		assert.strictEqual(document.getText(editor.selection), 'fenced content');
+	});
+
+	test('toFence inserts an empty block with the cursor on the content line', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: '' });
+		const editor = await vscode.window.showTextDocument(document);
+
+		await vscode.commands.executeCommand('caser.toFence');
+
+		const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+		assert.strictEqual(document.getText(), ['```cs', '', '```'].join(eol));
+		assert.deepStrictEqual(editor.selection.active, new vscode.Position(1, 0));
+	});
+
+	test('toFence cycles the type of a selected fenced block', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: '```cs\nvalue\n```' });
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(document.lineCount - 1).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.toFence');
+
+		assert.strictEqual(document.getText(), '```json\nvalue\n```');
+		assert.strictEqual(document.getText(editor.selection), document.getText());
+	});
+
+	test('toFence cycles the opening type when the cursor is on a closing fence', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: '```sql\nvalue\n```' });
+		const editor = await vscode.window.showTextDocument(document);
+		const closingFenceEnd = document.lineAt(2).range.end;
+		editor.selection = new vscode.Selection(closingFenceEnd, closingFenceEnd);
+
+		await vscode.commands.executeCommand('caser.toFence');
+
+		assert.strictEqual(document.getText(), '```ps\nvalue\n```');
+		assert.deepStrictEqual(editor.selection.active, editor.document.lineAt(2).range.end);
+	});
 });
 
 async function waitForDocumentText(document: vscode.TextDocument, expected: string): Promise<void> {

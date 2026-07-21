@@ -1,6 +1,6 @@
 # caser README
 
-This is the README for extension "caser" v 1.0.35
+This is the README for extension "caser" v 1.0.39
 
 ## Building and Running
 
@@ -72,6 +72,8 @@ sql:^\\s*--.*$
 ```
 
 **regexPatterns** lists useful regex patterns for use by the `Select by Regex` function.
+
+**fences** defines the language identifiers cycled by `to-Fence`. The first entry is used when wrapping selected text or inserting a new empty fenced block. The default is `cs`, `json`, `sql`, `ps`, `yaml`, `html`, `css`, and `mermaid`.
 
 **quickRefPath** specifies the absolute path to a PDF file for quick reference access. If not set, defaults to `quick-reference.pdf` in the VSCode User folder (`%APPDATA%\Code\User\` on Windows, `~/.config/Code/User/` on Linux, `~/Library/Application Support/Code/User/` on macOS).
 
@@ -153,6 +155,7 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 | `a enter` | to-Continue-indented  | like ctrl+enter but replicates the current indent style and depth  
 | `a -`     | to-Indent             | rotate through levels of indented bullet                        || 
 | `a /`     | to-Line-Comment       | insert special ad-hoc line comment non-destructively in markdown
+|           | to-Fence              | wrap text in a fenced block, insert an empty block, or cycle its language
 ### Dummy text
 
 | key    | method     |
