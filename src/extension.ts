@@ -2197,6 +2197,22 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toNextEnd = vscode.commands.registerCommand('caser.toNextEnd', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        editor.selections = editor.selections.map(selection => {
+            const currentLine = document.lineAt(selection.active.line);
+            const targetLineNumber = selection.active.character === currentLine.range.end.character
+                ? Math.min(selection.active.line + 1, document.lineCount - 1)
+                : selection.active.line;
+            const target = document.lineAt(targetLineNumber).range.end;
+            return new vscode.Selection(target, target);
+        });
+    });
     const toPrefixList = vscode.commands.registerCommand('caser.toPrefixList', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -3122,6 +3138,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTrim);
     context.subscriptions.push(toTest);
     context.subscriptions.push(toEnd);
+    context.subscriptions.push(toNextEnd);
     context.subscriptions.push(toPrefixList);
     context.subscriptions.push(toOrder);
     context.subscriptions.push(toSuffixList);

@@ -102,6 +102,29 @@ suite('Extension Test Suite', () => {
 			assert.strictEqual(document.getText(editor.selection), 'Word');
 		}
 	});
+
+	test('toNextEnd moves to the current line end, then the next line end', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: 'first\nsecond line' });
+		const editor = await vscode.window.showTextDocument(document);
+		const cursor = new vscode.Position(0, 2);
+		editor.selection = new vscode.Selection(cursor, cursor);
+
+		await vscode.commands.executeCommand('caser.toNextEnd');
+		assert.deepStrictEqual(editor.selection.active, document.lineAt(0).range.end);
+
+		await vscode.commands.executeCommand('caser.toNextEnd');
+		assert.deepStrictEqual(editor.selection.active, document.lineAt(1).range.end);
+	});
+
+	test('toNextEnd remains at the end of the final line', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: 'only line' });
+		const editor = await vscode.window.showTextDocument(document);
+		const lineEnd = document.lineAt(0).range.end;
+		editor.selection = new vscode.Selection(lineEnd, lineEnd);
+
+		await vscode.commands.executeCommand('caser.toNextEnd');
+		assert.deepStrictEqual(editor.selection.active, lineEnd);
+	});
 });
 
 async function waitForDocumentText(document: vscode.TextDocument, expected: string): Promise<void> {

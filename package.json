@@ -398,6 +398,10 @@
                 "title": "to-End"
             },
             {
+                "command": "caser.toNextEnd",
+                "title": "to-NextEnd"
+            },
+            {
                 "command": "caser.toPrefixList",
                 "title": "to-PrefixList"
             },
