@@ -14,13 +14,20 @@
         "url": "git+https://github.com/NigelWGMajor/vscode-format-tools.git"
     },
     "publisher": "major-nix-test",
-    "activationEvents": [],
+    "activationEvents": [
+        "onStartupFinished"
+    ],
     "main": "./dist/extension",
     "contributes": {
         "configuration": {
             "type": "object",
             "title": "Caser Settings",
             "properties": {
+                "caser.dimActive": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Whether configured dimmable text is dimmed. The to-Dimmed command toggles and persists this setting."
+                },
                 "caser.dimmableMatches": {
                     "type": "array",
                     "items": {
@@ -525,6 +532,10 @@
             {
                 "command": "caser.toTree",
                 "title": "to-Hierarchy"
+            },
+            {
+                "command": "caser.toAnchor",
+                "title": "to-Anchor"
             },
             {
                 "command": "caser.toHeader",

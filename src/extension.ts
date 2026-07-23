@@ -21,6 +21,16 @@ type MarkedLinkMatch = {
     target: string;
 };
 
+export function buildAnchorDetails(relativeFilePath: string, zeroBasedLine: number) {
+    const anchorId = `ref-${zeroBasedLine + 1}`;
+    const normalizedPath = relativeFilePath.replace(/\\/g, '/').replace(/^\.\/+/, '');
+    return {
+        anchorId,
+        anchor: `<a id="${anchorId}"></a>`,
+        bookmarkLink: `[${anchorId}](./${normalizedPath}#${anchorId})`
+    };
+}
+
 class BucketFolderService {
     private static readonly lastFolderKey = 'caser.bucket.lastFolder';
 
@@ -192,8 +202,11 @@ export function activate(context: vscode.ExtensionContext) {
     // Add your function in this section then look for TODO: 02
     ///////////////////////////////////////////////////////////////
 
-    let isDimActive = false;
+    let isDimActive = vscode.workspace
+        .getConfiguration('caser')
+        .get<boolean>('dimActive', true);
     const bucketFolders = new BucketFolderService(context);
+    let toFilePath: string | undefined;
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -1070,8 +1083,18 @@ export function activate(context: vscode.ExtensionContext) {
         dimRule: string) {
         const decorations: vscode.DecorationOptions[] = [];
 
-        if (isDimActive && dimRule) {
-            const regexPatterns = dimRule.split(':').map(s => s.trim()).filter(Boolean).map(pattern => new RegExp(pattern, 'g'));
+        if (isActive && dimRule) {
+            const regexPatterns = dimRule
+                .split(':')
+                .map(pattern => pattern.trim())
+                .filter(Boolean)
+                .flatMap(pattern => {
+                    try {
+                        return [new RegExp(pattern, 'g')];
+                    } catch {
+                        return [];
+                    }
+                });
 
 
             for (let lineNum = 0; lineNum < editor.document.lineCount; lineNum++) {
@@ -1125,30 +1148,71 @@ export function activate(context: vscode.ExtensionContext) {
         opacity: '0.45',
     });
 
-    const toDimmed = vscode.commands.registerCommand('caser.toDimmed', () => {
+    function getDimRule(editor: vscode.TextEditor): string {
+        const definitions = vscode.workspace
+            .getConfiguration('caser')
+            .get<string[]>('dimmableMatches', []);
+        const languagePrefix = editor.document.languageId + ':';
+        const match = definitions.find(definition => definition.startsWith(languagePrefix));
+        return match?.substring(languagePrefix.length) ?? '';
+    }
+
+    function refreshDimmedEditor(editor: vscode.TextEditor): void {
+        updateTextVisibilityR(
+            editor,
+            isDimActive,
+            hideDecorationType,
+            getDimRule(editor)
+        );
+    }
+
+    function refreshDimmedEditors(): void {
+        for (const editor of vscode.window.visibleTextEditors) {
+            refreshDimmedEditor(editor);
+        }
+    }
+
+    refreshDimmedEditors();
+    context.subscriptions.push(
+        hideDecorationType,
+        vscode.window.onDidChangeVisibleTextEditors(refreshDimmedEditors),
+        vscode.workspace.onDidChangeConfiguration(event => {
+            if (event.affectsConfiguration('caser.dimActive')) {
+                isDimActive = vscode.workspace
+                    .getConfiguration('caser')
+                    .get<boolean>('dimActive', true);
+            }
+            if (
+                event.affectsConfiguration('caser.dimActive')
+                || event.affectsConfiguration('caser.dimmableMatches')
+            ) {
+                refreshDimmedEditors();
+            }
+        })
+    );
+
+    const toDimmed = vscode.commands.registerCommand('caser.toDimmed', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
             return;
         }
 
-        // Read settings array and find the first string matching the current language
-        const config = vscode.workspace.getConfiguration();
-        const definitions: string[] = config.get('caser.dimmableMatches', []);
-        const languageId = editor.document.languageId;
-        // Find a definition string that starts with the languageId followed by a colon
-        const match = definitions.find(defStr => defStr.startsWith(languageId + ':'));
-        let dimRule = '';
-        if (match) {
-            dimRule = match.substring(languageId.length + 1); // everything after 'lang:'
-        }
-        else {
-            // nothing to do in this language.
+        if (!getDimRule(editor)) {
             vscode.window.setStatusBarMessage('');
             return;
         }
-        isDimActive = !isDimActive;
-        updateTextVisibilityR(editor, isDimActive, hideDecorationType, dimRule);
-        vscode.window.setStatusBarMessage(`${isDimActive ? 'dim' : '==='}`);
+
+        const nextState = !isDimActive;
+        try {
+            await vscode.workspace
+                .getConfiguration('caser')
+                .update('dimActive', nextState, vscode.ConfigurationTarget.Global);
+            isDimActive = nextState;
+            refreshDimmedEditors();
+            vscode.window.setStatusBarMessage(`${isDimActive ? 'dim' : '==='}`);
+        } catch (error) {
+            vscode.window.showErrorMessage('Could not save the dimming state: ' + error);
+        }
     });
     const toQuoted = vscode.commands.registerCommand('caser.toQuoted', () => {
         const editor = vscode.window.activeTextEditor;
@@ -1212,60 +1276,64 @@ export function activate(context: vscode.ExtensionContext) {
     });
     const toFile = vscode.commands.registerCommand('caser.toFile', async () => {
         const editor = vscode.window.activeTextEditor;
-        if (editor) {
-            const document = editor.document;
-            const selection = editor.selection;
-            // retrieve the first line of text
-            const line = document.lineAt(selection.start.line);
-            const lineRange = line.range;
-            const lineText = document.getText(lineRange).trim();
-            // the first line should have a path in parentheses
-            const start = lineText.indexOf('(');
-            const end = lineText.indexOf(')', start);
-            if (start > -1 && end > start) {
-                const filePath = lineText.substring(start + 1, end);
-                const adjustedSelection = new vscode.Selection(
-                    selection.start.translate(1, 0),
-                    selection.end
-                );
-                const text = document.getText(adjustedSelection);
-                // create a new file using the filepath
-                // get the current workspace folder
-                const workspaceFolders = vscode.workspace.workspaceFolders;
-                if (!workspaceFolders) {
-                    vscode.window.showErrorMessage('No workspace folder is open. Please open a folder or workspace.');
-                    return;
-                }
-                const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, filePath);
-                try {
-                    let existingContent = '';
+        if (!editor) {
+            vscode.window.showErrorMessage('No active editor is available.');
+            return;
+        }
 
-                    // Check if the file exists
-                    try {
-                        const fileStat = await vscode.workspace.fs.stat(uri);
-                        if (fileStat) {
-                            // If the file exists, read its content
-                            const fileData = await vscode.workspace.fs.readFile(uri);
-                            existingContent = fileData.toString();
-                        }
-                    } catch {
-                        // File does not exist, proceed to create it
-                    }
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders) {
+            vscode.window.showErrorMessage('No workspace folder is open. Please open a folder or workspace.');
+            return;
+        }
 
-                    const content = existingContent + text;
-
-                    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content));
-
-                    editor.edit(builder => {
-                        builder.delete(adjustedSelection);
-                    });
-                    const newDocument = await vscode.workspace.openTextDocument(uri);
-                    const editor2 = await vscode.window.showTextDocument(newDocument);
-                    newDocument.save();
-                } catch (error) {
-                    vscode.window.showErrorMessage('Error creating file: ' + error);
-                }
+        let filePath = toFilePath;
+        if (!filePath) {
+            const requestedPath = await vscode.window.showInputBox({
+                prompt: 'Enter a filename or workspace-relative path',
+                placeHolder: 'notes.md',
+                validateInput: value => value.trim() ? undefined : 'Enter a filename.'
+            });
+            if (requestedPath === undefined) {
+                return;
             }
+            filePath = requestedPath.trim();
+        }
+
+        const document = editor.document;
+        const selection = defaultToLineSelected(editor, editor.selection);
+        const text = document.getText(selection);
+        const uri = vscode.Uri.joinPath(workspaceFolders[0].uri, filePath);
+
+        try {
+            let existingContent = '';
+            try {
+                const fileData = await vscode.workspace.fs.readFile(uri);
+                existingContent = new TextDecoder().decode(fileData);
+            } catch {
+                // File does not exist, so it will be created.
+            }
+
+            await vscode.workspace.fs.writeFile(
+                uri,
+                new TextEncoder().encode(existingContent + text)
+            );
+
+            const removed = await editor.edit(builder => {
+                builder.delete(selection);
+            });
+            if (!removed) {
+                vscode.window.showWarningMessage(
+                    `Content was appended to ${filePath}, but could not be removed from the editor.`
+                );
+            }
+
+            toFilePath = filePath;
+            const newDocument = await vscode.workspace.openTextDocument(uri);
+            await vscode.window.showTextDocument(newDocument);
+            await newDocument.save();
+        } catch (error) {
+            vscode.window.showErrorMessage('Error writing file: ' + error);
         }
     });
     const saveToBucket = vscode.commands.registerCommand('caser.saveToBucket', async () => {
@@ -2651,6 +2719,42 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toAnchor = vscode.commands.registerCommand('caser.toAnchor', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('No active editor is available.');
+            return;
+        }
+
+        const document = editor.document;
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        if (document.isUntitled || !workspaceFolder) {
+            vscode.window.showErrorMessage(
+                'Save the document inside the current workspace before creating an anchor.'
+            );
+            return;
+        }
+
+        const targetLineIndex = editor.selection.active.line;
+        const targetCharacter = editor.selection.active.character;
+        const relativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+        const anchorDetails = buildAnchorDetails(relativePath, targetLineIndex);
+        const newline = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+        const targetLine = document.lineAt(targetLineIndex);
+
+        const inserted = await editor.edit(builder => {
+            builder.insert(targetLine.range.start, anchorDetails.anchor + newline);
+        });
+        if (!inserted) {
+            vscode.window.showErrorMessage('Could not insert the anchor.');
+            return;
+        }
+
+        await vscode.env.clipboard.writeText(anchorDetails.bookmarkLink);
+
+        const targetPosition = new vscode.Position(targetLineIndex + 1, targetCharacter);
+        editor.selection = new vscode.Selection(targetPosition, targetPosition);
+    });
     const toHeader = vscode.commands.registerCommand('caser.toHeader', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -3270,6 +3374,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTogglePipeComma);
     context.subscriptions.push(csvToMarkdownTable);
     context.subscriptions.push(toTree);
+    context.subscriptions.push(toAnchor);
     context.subscriptions.push(toHeader);
     context.subscriptions.push(toContinue);
     context.subscriptions.push(toDitto);

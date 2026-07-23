@@ -3,7 +3,7 @@ import * as assert from 'assert';
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 import * as vscode from 'vscode';
-// import * as myExtension from '../../extension';
+import { buildAnchorDetails } from '../extension';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -124,6 +124,17 @@ suite('Extension Test Suite', () => {
 
 		await vscode.commands.executeCommand('caser.toNextEnd');
 		assert.deepStrictEqual(editor.selection.active, lineEnd);
+	});
+
+	test('toAnchor formats a numbered anchor and workspace-relative bookmark link', () => {
+		assert.deepStrictEqual(
+			buildAnchorDetails('notes\\example.md', 11),
+			{
+				anchorId: 'ref-12',
+				anchor: '<a id="ref-12"></a>',
+				bookmarkLink: '[ref-12](./notes/example.md#ref-12)'
+			}
+		);
 	});
 
 	test('markLink selects the title after inserting a link', async () => {

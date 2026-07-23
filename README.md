@@ -33,7 +33,9 @@ Suggested keybindings:
 
 ## caser Properties
 
-**dimmableMatches** defines whether to dim lines matching tag definitions in the current language. This is used by the `to-Dimmed` command. This is an array of strings: each string starts with the target language id (e.g. `markdown` or `sql`) followed by one or more regex expressions, all seperated with colons. For example, to dim lines with `<pre` or `pre>` tags in markdown, you would set the property to: `markdown:<pre:pre>`. To dim lines with `--` in SQL, you would set the property to: `sql:--`. Only one string per language, but multiple regex expressions are supported.
+**dimActive** controls whether configured matches are dimmed. It defaults to `true`, persists in VS Code's user settings, and is toggled by the `to-Dimmed` command.
+
+**dimmableMatches** defines which text ranges to dim in the current language. This is an array of strings: each string starts with the target language id (e.g. `markdown` or `sql`) followed by one or more regex expressions, all seperated with colons. For example, to dim lines with `<pre` or `pre>` tags in markdown, you would set the property to: `markdown:<pre:pre>`. To dim lines with `--` in SQL, you would set the property to: `sql:--`. Only one string per language, but multiple regex expressions are supported.
 
 The general form is:
 
@@ -193,9 +195,10 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 | `ac L` | markLink    | [🔗]() [🔖](#)  [🎟️]()  [🔀]()  [ℹ️]()  [⏪]()  [⏩]()            |
 | `ac P` | to-End      | pushes content to end         | If starts with a header             |
 |        |             |                               |that is moved and a link inserted.   |
-| `ac F` | to-File     | Top line must have file link `[a](./filename.md)`| (this remains)   |
-|        |             |                      - the rest moves to that file, link remains.   |
-|        |             |      - Repeat to append to file. File is opened and updated.        |
+| `ac F` | to-File     | First use prompts for a workspace-relative filename or path.        |
+|        |             | The selection (or current line) moves to that file.                  |
+|        |             | Later uses append to the same file for the current VS Code session.  |
+|        | to-Anchor   | Inserts `<a id="ref-N"></a>` before line N and copies a link such as `[ref-N](./path/file.md#ref-N)`. |
 
 ### Bucketed save/load
 
