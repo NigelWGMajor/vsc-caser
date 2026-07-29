@@ -371,6 +371,10 @@
                 "title": "to-Compact"
             },
             {
+                "command": "caser.toOneLine",
+                "title": "to-OneLine"
+            },
+            {
                 "command": "caser.toSwap",
                 "title": "to-Swap"
             },
@@ -533,6 +537,10 @@
             {
                 "command": "caser.csvToMarkdownTable",
                 "title": "to-Table"
+            },
+            {
+                "command": "caser.toWrappedColumns",
+                "title": "to-WrappedColumns"
             },
             {
                 "command": "caser.toTree",

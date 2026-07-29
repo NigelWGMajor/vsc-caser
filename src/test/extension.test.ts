@@ -19,6 +19,10 @@ import {
 	toLowerKebabFileStem
 } from '../nestedImagePaste';
 import {
+	collapseToOneLine,
+	wrapMarkdownTableColumns
+} from '../selectionTransforms';
+import {
     findDocumentsReferencingImage,
     findDocumentsReferencingImages,
     formatWhereUsedMessage,
@@ -40,6 +44,63 @@ suite('Extension Test Suite', () => {
 	test('Sample test', () => {
 		assert.strictEqual(-1, [1, 2, 3].indexOf(5));
 		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
+	});
+
+	test('toOneLine joins selected lines and preserves the final newline', async () => {
+		const document = await vscode.workspace.openTextDocument({
+			content: 'alpha  \t\n  beta\t\t\ngamma   \nnext'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(3).range.start
+		);
+
+		await vscode.commands.executeCommand('caser.toOneLine');
+
+		assert.strictEqual(document.getText(), 'alpha beta gamma \nnext');
+	});
+
+	test('collapseToOneLine leaves multiple spaces inside a line unchanged', () => {
+		assert.strictEqual(
+			collapseToOneLine('alpha  middle\nbeta'),
+			'alpha  middle beta'
+		);
+	});
+
+	test('toWrappedColumns displays long cells on padded continuation rows', async () => {
+		const input = [
+			'| Key | Details |',
+			'| --- | --- |',
+			'| A | one two three four |',
+			'| B | short |'
+		].join('\n');
+		const expected = [
+			'| Key | Details    |',
+			'| --- | ---------- |',
+			'| A   | one two    |',
+			'|     | three four |',
+			'| B   | short      |'
+		].join('\n');
+
+		assert.strictEqual(wrapMarkdownTableColumns(input, 10), expected);
+
+		const longCell = 'x'.repeat(41);
+		const document = await vscode.workspace.openTextDocument({
+			content: `| Key | Details |\n| --- | --- |\n| A | ${longCell} |`,
+			language: 'markdown'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(document.lineCount - 1).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.toWrappedColumns');
+
+		const outputLines = document.getText().split('\n');
+		assert.strictEqual(outputLines[2].includes('x'.repeat(40)), true);
+		assert.strictEqual(outputLines[3].startsWith('|     | x'), true);
 	});
 
 	test('toSwap exchanges adjacent non-whitespace characters at an empty cursor', async () => {

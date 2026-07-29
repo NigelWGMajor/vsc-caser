@@ -34,6 +34,10 @@ import {
     repairDocumentLinks,
     RepairDocumentLinksResult
 } from './documentLinks';
+import {
+    collapseToOneLine,
+    wrapMarkdownTableColumns
+} from './selectionTransforms';
 const math = require('mathjs');
 import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
@@ -2223,6 +2227,22 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toOneLine = vscode.commands.registerCommand('caser.toOneLine', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selections = editor.selections;
+            await editor.edit(builder => {
+                for (const selection of selections) {
+                    const adjustedSelection = defaultToLineSelected(editor, selection);
+                    builder.replace(
+                        adjustedSelection,
+                        collapseToOneLine(document.getText(adjustedSelection))
+                    );
+                }
+            });
+        }
+    });
     const toSwap = vscode.commands.registerCommand('caser.toSwap', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -2886,6 +2906,21 @@ export function activate(context: vscode.ExtensionContext) {
 
                     const newText = markdownLines.join('\n');
                     builder.replace(selection, newText);
+                }
+            });
+        }
+    });
+    const toWrappedColumns = vscode.commands.registerCommand('caser.toWrappedColumns', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selections = editor.selections;
+            await editor.edit(builder => {
+                for (const selection of selections) {
+                    builder.replace(
+                        selection,
+                        wrapMarkdownTableColumns(document.getText(selection))
+                    );
                 }
             });
         }
@@ -4175,6 +4210,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toSecure);
     context.subscriptions.push(toFlip);
     context.subscriptions.push(toCompact);
+    context.subscriptions.push(toOneLine);
     context.subscriptions.push(toSwap);
     context.subscriptions.push(markLine);
     context.subscriptions.push(markStep);
@@ -4206,6 +4242,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toUnix);
     context.subscriptions.push(toTogglePipeComma);
     context.subscriptions.push(csvToMarkdownTable);
+    context.subscriptions.push(toWrappedColumns);
     context.subscriptions.push(toTree);
     context.subscriptions.push(toAnchor);
     context.subscriptions.push(toHeader);
