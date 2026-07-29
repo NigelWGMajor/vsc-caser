@@ -36,6 +36,7 @@ import {
 } from './documentLinks';
 import {
     collapseToOneLine,
+    unwrapMarkdownTableColumns,
     wrapMarkdownTableColumns
 } from './selectionTransforms';
 const math = require('mathjs');
@@ -2925,6 +2926,21 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
+    const toUnwrappedColumns = vscode.commands.registerCommand('caser.toUnwrappedColumns', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const document = editor.document;
+            const selections = editor.selections;
+            await editor.edit(builder => {
+                for (const selection of selections) {
+                    builder.replace(
+                        selection,
+                        unwrapMarkdownTableColumns(document.getText(selection))
+                    );
+                }
+            });
+        }
+    });
     const toTree = vscode.commands.registerCommand('caser.toTree', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -4243,6 +4259,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTogglePipeComma);
     context.subscriptions.push(csvToMarkdownTable);
     context.subscriptions.push(toWrappedColumns);
+    context.subscriptions.push(toUnwrappedColumns);
     context.subscriptions.push(toTree);
     context.subscriptions.push(toAnchor);
     context.subscriptions.push(toHeader);

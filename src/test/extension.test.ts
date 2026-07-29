@@ -20,6 +20,7 @@ import {
 } from '../nestedImagePaste';
 import {
 	collapseToOneLine,
+	unwrapMarkdownTableColumns,
 	wrapMarkdownTableColumns
 } from '../selectionTransforms';
 import {
@@ -101,6 +102,39 @@ suite('Extension Test Suite', () => {
 		const outputLines = document.getText().split('\n');
 		assert.strictEqual(outputLines[2].includes('x'.repeat(40)), true);
 		assert.strictEqual(outputLines[3].startsWith('|     | x'), true);
+	});
+
+	test('toUnwrappedColumns restores rows using empty first-column cells', async () => {
+		const input = [
+			'| Key | Details    | Notes  |',
+			'| --- | ---------- | ------ |',
+			'| A   | one two    | first  |',
+			'|     | three four | second |',
+			'|     | five       |        |',
+			'| B   | short      | last   |'
+		].join('\n');
+		const expected = [
+			'| Key | Details                 | Notes        |',
+			'| --- | ----------------------- | ------------ |',
+			'| A   | one two three four five | first second |',
+			'| B   | short                   | last         |'
+		].join('\n');
+
+		assert.strictEqual(unwrapMarkdownTableColumns(input), expected);
+
+		const document = await vscode.workspace.openTextDocument({
+			content: input,
+			language: 'markdown'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(document.lineCount - 1).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.toUnwrappedColumns');
+
+		assert.strictEqual(document.getText(), expected);
 	});
 
 	test('toSwap exchanges adjacent non-whitespace characters at an empty cursor', async () => {

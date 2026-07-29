@@ -1,6 +1,6 @@
 # caser README
 
-This is the README for extension "caser" v 1.0.45
+This is the README for extension "caser" v 1.0.46
 
 ## Building and Running
 

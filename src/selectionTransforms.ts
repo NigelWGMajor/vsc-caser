@@ -103,3 +103,70 @@ export function wrapMarkdownTableColumns(text: string, width = 40): string {
 
     return markdownLines.join('\n') + finalLineEnding;
 }
+
+export function unwrapMarkdownTableColumns(text: string): string {
+    const finalLineEnding = trailingLineEnding(text);
+    const lines = text
+        .split(/\r\n|\r|\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+    if (lines.length === 0 || lines.some(line => !line.includes('|'))) {
+        return text;
+    }
+
+    const parsedRows = lines.map(parseMarkdownRow);
+    const hasSeparator = parsedRows.some(row =>
+        row.length > 0 && row.every(cell => markdownTableSeparator.test(cell))
+    );
+    const displayedRows = parsedRows.filter(row =>
+        !row.every(cell => markdownTableSeparator.test(cell))
+    );
+    if (displayedRows.length === 0) {
+        return text;
+    }
+
+    const columnCount = Math.max(...displayedRows.map(row => row.length));
+    const rows: string[][] = [];
+    for (const displayedRow of displayedRows) {
+        const row = Array.from(
+            { length: columnCount },
+            (_, columnIndex) => displayedRow[columnIndex] ?? ''
+        );
+        const previousRow = rows[rows.length - 1];
+        if (row[0] === '' && previousRow) {
+            for (let columnIndex = 1; columnIndex < columnCount; columnIndex++) {
+                const fragment = row[columnIndex];
+                if (fragment.length > 0) {
+                    previousRow[columnIndex] = previousRow[columnIndex].length > 0
+                        ? `${previousRow[columnIndex]} ${fragment}`
+                        : fragment;
+                }
+            }
+        } else {
+            rows.push(row);
+        }
+    }
+
+    const columnWidths = Array.from({ length: columnCount }, (_, columnIndex) =>
+        Math.max(
+            hasSeparator ? 3 : 0,
+            ...rows.map(row => row[columnIndex].length)
+        )
+    );
+    const renderRow = (row: string[]) =>
+        '| ' + row.map((cell, columnIndex) =>
+            cell.padEnd(columnWidths[columnIndex], ' ')
+        ).join(' | ') + ' |';
+
+    const markdownLines: string[] = [];
+    for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        markdownLines.push(renderRow(rows[rowIndex]));
+        if (rowIndex === 0 && hasSeparator) {
+            markdownLines.push(renderRow(columnWidths.map(columnWidth =>
+                '-'.repeat(columnWidth)
+            )));
+        }
+    }
+
+    return markdownLines.join('\n') + finalLineEnding;
+}

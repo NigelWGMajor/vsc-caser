@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.45.",
-    "version": "1.0.45",
+    "description": "This is the README for extension \"caser\" version 1.0.46.",
+    "version": "1.0.46",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -541,6 +541,10 @@
             {
                 "command": "caser.toWrappedColumns",
                 "title": "to-WrappedColumns"
+            },
+            {
+                "command": "caser.toUnwrappedColumns",
+                "title": "to-UnwrappedColumns"
             },
             {
                 "command": "caser.toTree",
