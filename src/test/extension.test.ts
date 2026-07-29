@@ -20,6 +20,7 @@ import {
 } from '../nestedImagePaste';
 import {
 	collapseToOneLine,
+	escapeCsvNewlines,
 	unwrapMarkdownTableColumns,
 	wrapMarkdownTableColumns
 } from '../selectionTransforms';
@@ -69,6 +70,59 @@ suite('Extension Test Suite', () => {
 		);
 	});
 
+	test('escapeCsvNewlines escapes line endings only inside quoted fields', () => {
+		const input = [
+			'id,notes,status',
+			'1,"first line',
+			'second line",open',
+			'2,unchanged,closed'
+		].join('\r\n');
+		const expected = [
+			'id,notes,status',
+			'1,"first line\\nsecond line",open',
+			'2,unchanged,closed'
+		].join('\r\n');
+
+		assert.strictEqual(escapeCsvNewlines(input), expected);
+	});
+
+	test('escapeCsvNewlines preserves doubled quotes in multiline fields', () => {
+		assert.strictEqual(
+			escapeCsvNewlines('1,"a ""quoted"" value\non two lines",done'),
+			'1,"a ""quoted"" value\\non two lines",done'
+		);
+	});
+
+	test('toEscapedCsv keeps each selected CSV record on one document line', async () => {
+		const input = 'id,notes\n1,"first line\nsecond line"\n2,unchanged';
+		const expected = 'id,notes\n1,"first line\\nsecond line"\n2,unchanged';
+		const document = await vscode.workspace.openTextDocument({ content: input });
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(document.lineCount - 1).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.toEscapedCsv');
+
+		assert.strictEqual(document.getText(), expected);
+	});
+
+	test('toTable protects quoted multiline CSV fields before rendering', async () => {
+		const input = 'id,notes\n1,"first line\nsecond line"';
+		const document = await vscode.workspace.openTextDocument({ content: input });
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(document.lineCount - 1).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.csvToMarkdownTable');
+
+		assert.strictEqual(document.getText().split('\n').length, 3);
+		assert.strictEqual(document.getText().includes('first line\\nsecond line'), true);
+	});
+
 	test('toWrappedColumns displays long cells on padded continuation rows', async () => {
 		const input = [
 			'| Key | Details |',
@@ -86,7 +140,7 @@ suite('Extension Test Suite', () => {
 
 		assert.strictEqual(wrapMarkdownTableColumns(input, 10), expected);
 
-		const longCell = 'x'.repeat(41);
+		const longCell = 'x'.repeat(51);
 		const document = await vscode.workspace.openTextDocument({
 			content: `| Key | Details |\n| --- | --- |\n| A | ${longCell} |`,
 			language: 'markdown'
@@ -100,8 +154,103 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('caser.toWrappedColumns');
 
 		const outputLines = document.getText().split('\n');
-		assert.strictEqual(outputLines[2].includes('x'.repeat(40)), true);
+		assert.strictEqual(outputLines[2].includes('x'.repeat(50)), true);
 		assert.strictEqual(outputLines[3].startsWith('|     | x'), true);
+	});
+
+	test('wrapMarkdownTableColumns keeps an over-width URL unbroken on its own row', () => {
+		const url = 'https://example.com/a/very/long/path?with=query';
+		const input = [
+			'| Key | Details |',
+			'| --- | --- |',
+			`| A | Before ${url} after |`
+		].join('\n');
+		const outputLines = wrapMarkdownTableColumns(input, 20).split('\n');
+
+		assert.strictEqual(outputLines.length, 5);
+		assert.strictEqual(outputLines[2].split('|')[2].trim(), 'Before');
+		assert.strictEqual(outputLines[3].split('|')[2].trim(), url);
+		assert.strictEqual(outputLines[4].split('|')[2].trim(), 'after');
+		assert.strictEqual(outputLines.join('\n').split(url).length - 1, 1);
+	});
+
+	test('wrapMarkdownTableColumns recognizes URLs beside escaped CSV newlines', () => {
+		const url = 'https://example.com/a/very/long/path?with=query';
+		const input = [
+			'| Key | Details |',
+			'| --- | --- |',
+			`| A | Before\\n${url}\\nafter |`
+		].join('\n');
+		const outputLines = wrapMarkdownTableColumns(input, 20).split('\n');
+
+		assert.strictEqual(outputLines.length, 5);
+		assert.strictEqual(outputLines[2].split('|')[2].trim(), 'Before');
+		assert.strictEqual(outputLines[3].split('|')[2].trim(), url);
+		assert.strictEqual(outputLines[4].split('|')[2].trim(), 'after');
+		assert.strictEqual(outputLines.join('\n').includes('\\n'), false);
+		assert.strictEqual(outputLines.join('\n').split(url).length - 1, 1);
+	});
+
+	test('wrapMarkdownTableColumns treats escaped newlines as hard breaks before short URLs', () => {
+		const linkedInUrl = 'https://ca.linkedin.com/in/kiengiv';
+		const facebookUrl = 'https://www.facebook.com/UWaterlooBusinessAnalytics';
+		const input = [
+			'| Id | Details |',
+			'| --- | --- |',
+			`| 24 | Kieng Iv/SAF Business Analytics\\n${linkedInUrl}\\n${facebookUrl} |`
+		].join('\n');
+		const outputLines = wrapMarkdownTableColumns(input, 80).split('\n');
+		const details = outputLines.slice(2).map(line => line.split('|')[2].trim());
+
+		assert.deepStrictEqual(details, [
+			'Kieng Iv/SAF Business Analytics',
+			linkedInUrl,
+			facebookUrl
+		]);
+		assert.strictEqual(outputLines.join('\n').includes('\\n'), false);
+	});
+
+	test('wrapMarkdownTableColumns preserves repeated escaped newlines', () => {
+		const input = [
+			'| Id | Details |',
+			'| --- | --- |',
+			'| 24 | First paragraph\\n\\nSecond paragraph |'
+		].join('\n');
+		const outputLines = wrapMarkdownTableColumns(input, 80).split('\n');
+		const details = outputLines.slice(2).map(line => line.split('|')[2].trim());
+
+		assert.deepStrictEqual(details, ['First paragraph', '', 'Second paragraph']);
+	});
+
+	test('toWrappedColumns uses maximumWidthOfColumnsInTables', async () => {
+		const configuration = vscode.workspace.getConfiguration('caser');
+		const setting = 'maximumWidthOfColumnsInTables';
+		const previousValue = configuration.inspect<number>(setting)?.globalValue;
+
+		await configuration.update(setting, 12, vscode.ConfigurationTarget.Global);
+		try {
+			const document = await vscode.workspace.openTextDocument({
+				content: '| Key | Details |\n| --- | --- |\n| A | one two three four |',
+				language: 'markdown'
+			});
+			const editor = await vscode.window.showTextDocument(document);
+			editor.selection = new vscode.Selection(
+				document.lineAt(0).range.start,
+				document.lineAt(document.lineCount - 1).range.end
+			);
+
+			await vscode.commands.executeCommand('caser.toWrappedColumns');
+
+			assert.strictEqual(document.getText().split('\n').length, 4);
+			assert.strictEqual(document.getText().includes('one two'), true);
+			assert.strictEqual(document.getText().includes('three four'), true);
+		} finally {
+			await configuration.update(
+				setting,
+				previousValue,
+				vscode.ConfigurationTarget.Global
+			);
+		}
 	});
 
 	test('toUnwrappedColumns restores rows using empty first-column cells', async () => {
@@ -554,12 +703,17 @@ suite('Extension Test Suite', () => {
 			await fs.writeFile(markdown, '');
 			const document = await vscode.workspace.openTextDocument(vscode.Uri.file(markdown));
 			await vscode.window.showTextDocument(document);
-			await vscode.env.clipboard.writeText('pasted text');
+			try {
+				await vscode.env.clipboard.writeText('pasted text');
 
-			await vscode.commands.executeCommand('caser.toPasteNestedImage');
-			await waitForDocumentText(document, 'pasted text');
+				await vscode.commands.executeCommand('caser.toPasteNestedImage');
+				await waitForDocumentText(document, 'pasted text');
 
-			assert.strictEqual(document.getText(), 'pasted text');
+				assert.strictEqual(document.getText(), 'pasted text');
+			} finally {
+				await document.save();
+				await vscode.commands.executeCommand('workbench.action.closeActiveEditor');
+			}
 		});
 	});
 

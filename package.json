@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.46.",
-    "version": "1.0.46",
+    "description": "This is the README for extension \"caser\" version 1.0.47.",
+    "version": "1.0.47",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -32,6 +32,12 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Automatically update Markdown document and image links when files or folders are renamed or moved in the VS Code Explorer."
+                },
+                "caser.maximumWidthOfColumnsInTables": {
+                    "type": "number",
+                    "default": 50,
+                    "minimum": 1,
+                    "description": "Maximum width used when wrapping Markdown table columns. URLs longer than this remain unbroken on their own continuation row."
                 },
                 "caser.dimmableMatches": {
                     "type": "array",
@@ -537,6 +543,10 @@
             {
                 "command": "caser.csvToMarkdownTable",
                 "title": "to-Table"
+            },
+            {
+                "command": "caser.toEscapedCsv",
+                "title": "to-EscapedCsv"
             },
             {
                 "command": "caser.toWrappedColumns",

@@ -16,6 +16,43 @@ export function collapseToOneLine(text: string): string {
     return collapsed + finalLineEnding;
 }
 
+export function escapeCsvNewlines(text: string): string {
+    let escaped = '';
+    let insideQuotedField = false;
+
+    for (let index = 0; index < text.length; index++) {
+        const character = text[index];
+
+        if (character === '"') {
+            escaped += character;
+            if (insideQuotedField && text[index + 1] === '"') {
+                escaped += text[index + 1];
+                index++;
+            } else {
+                insideQuotedField = !insideQuotedField;
+            }
+            continue;
+        }
+
+        if (character === '\r' || character === '\n') {
+            const isCrLf = character === '\r' && text[index + 1] === '\n';
+            if (insideQuotedField) {
+                escaped += '\\n';
+            } else {
+                escaped += isCrLf ? '\r\n' : character;
+            }
+            if (isCrLf) {
+                index++;
+            }
+            continue;
+        }
+
+        escaped += character;
+    }
+
+    return escaped;
+}
+
 function parseMarkdownRow(line: string): string[] {
     const cells = line.split('|').map(cell => cell.trim());
     if (cells[0] === '') {
@@ -27,22 +64,63 @@ function parseMarkdownRow(line: string): string[] {
     return cells;
 }
 
-function wrapCell(text: string, width: number): string[] {
-    let remaining = text.trim();
-    const wrapped: string[] = [];
-
-    while (remaining.length > width) {
-        const spaceIndex = remaining.lastIndexOf(' ', width);
-        const breakIndex = spaceIndex > 0 ? spaceIndex : width;
-        wrapped.push(remaining.slice(0, breakIndex).trimEnd());
-        remaining = remaining.slice(breakIndex).trimStart();
+function wrapCellLine(text: string, width: number): string[] {
+    const words = text.trim().split(/\s+/).filter(word => word.length > 0);
+    if (words.length === 0) {
+        return [''];
     }
 
-    wrapped.push(remaining);
+    const wrapped: string[] = [];
+    let currentLine = '';
+    const urlPattern = /(?:https?:\/\/|ftp:\/\/|www\.)/i;
+
+    const flushCurrentLine = () => {
+        if (currentLine.length > 0) {
+            wrapped.push(currentLine);
+            currentLine = '';
+        }
+    };
+
+    for (const word of words) {
+        const isUrl = urlPattern.test(word);
+        if (isUrl && word.length > width) {
+            flushCurrentLine();
+            wrapped.push(word);
+            continue;
+        }
+
+        const combined = currentLine.length > 0 ? `${currentLine} ${word}` : word;
+        if (combined.length <= width) {
+            currentLine = combined;
+            continue;
+        }
+
+        flushCurrentLine();
+        if (isUrl || word.length <= width) {
+            currentLine = word;
+            continue;
+        }
+
+        let remaining = word;
+        while (remaining.length > width) {
+            wrapped.push(remaining.slice(0, width));
+            remaining = remaining.slice(width);
+        }
+        currentLine = remaining;
+    }
+
+    flushCurrentLine();
     return wrapped;
 }
 
-export function wrapMarkdownTableColumns(text: string, width = 40): string {
+function wrapCell(text: string, width: number): string[] {
+    return text
+        .trim()
+        .split(/\\r\\n|\\n|\\r/)
+        .flatMap(line => wrapCellLine(line, width));
+}
+
+export function wrapMarkdownTableColumns(text: string, width = 50): string {
     if (width < 1) {
         return text;
     }

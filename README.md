@@ -37,6 +37,8 @@ Suggested keybindings:
 
 **updateDocumentLinksOnMove** controls automatic Markdown link maintenance for files and folders renamed or moved in the VS Code Explorer. It defaults to `true`. When enabled, Caser updates links inside moved Markdown documents, inbound links from other Markdown documents, and inbound Markdown image references for moved images.
 
+**maximumWidthOfColumnsInTables** controls the maximum cell width used by `to-WrappedColumns` and defaults to `50`. Text wraps onto padded continuation rows. URLs are never split; a URL longer than the configured width is placed on its own continuation row.
+
 **dimmableMatches** defines which text ranges to dim in the current language. This is an array of strings: each string starts with the target language id (e.g. `markdown` or `sql`) followed by one or more regex expressions, all seperated with colons. For example, to dim lines with `<pre` or `pre>` tags in markdown, you would set the property to: `markdown:<pre:pre>`. To dim lines with `--` in SQL, you would set the property to: `sql:--`. Only one string per language, but multiple regex expressions are supported.
 
 The general form is:
@@ -154,7 +156,10 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 | `a O`     | to-Ordered            | orders a selected block by line alphabetically                                              |                                     | 
 | `a D`     | to-Ditto              | copies the item above word by word                                                          |                                     | 
 | `a H`     | to-Hierarchy          | draws tree characters representing a hierarchy                                              |                                     | 
-| `a T`     | to-Table              | converts csv to a markdown table, justifies a md table or delimits a single csv row         |                                     | 
+|            | to-EscapedCsv         | replaces newlines inside quoted CSV fields with `\n`, keeping each CSV record on one line    |                                     |
+| `a T`     | to-Table              | converts CSV to a Markdown table and automatically escapes quoted multiline fields           |                                     |
+|            | to-WrappedColumns     | wraps Markdown table cells at the configured width (default 50) without splitting URLs        |                                     |
+|            | to-UnwrappedColumns   | joins wrapped continuation rows back into their original Markdown table rows                  |                                     |
 | `a #`     | to-Header             | loops through header levels                                                                 |                                     | 
 | `a enter` | to-Continue-indented  | like ctrl+enter but replicates the current indent style and depth  
 | `a -`     | to-Indent             | rotate through levels of indented bullet                        || 

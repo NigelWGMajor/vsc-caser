@@ -36,6 +36,7 @@ import {
 } from './documentLinks';
 import {
     collapseToOneLine,
+    escapeCsvNewlines,
     unwrapMarkdownTableColumns,
     wrapMarkdownTableColumns
 } from './selectionTransforms';
@@ -2834,15 +2835,28 @@ export function activate(context: vscode.ExtensionContext) {
             });
         }
     });
-    const csvToMarkdownTable = vscode.commands.registerCommand('caser.csvToMarkdownTable', () => {
+    const toEscapedCsv = vscode.commands.registerCommand('caser.toEscapedCsv', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        await editor.edit(builder => {
+            for (const selection of editor.selections) {
+                builder.replace(selection, escapeCsvNewlines(document.getText(selection)));
+            }
+        });
+    });
+    const csvToMarkdownTable = vscode.commands.registerCommand('caser.csvToMarkdownTable', async () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
             const document = editor.document;
             const selections = editor.selections;
 
-            editor.edit(builder => {
+            await editor.edit(builder => {
                 for (const selection of selections) {
-                    const text = document.getText(selection);
+                    const text = escapeCsvNewlines(document.getText(selection));
                     const lines = text.split('\n').map(line => line.trim()).filter(line => line.length > 0);
 
                     if (lines.length === 0) {
@@ -2916,11 +2930,17 @@ export function activate(context: vscode.ExtensionContext) {
         if (editor) {
             const document = editor.document;
             const selections = editor.selections;
+            const configuredWidth = vscode.workspace
+                .getConfiguration('caser')
+                .get<number>('maximumWidthOfColumnsInTables', 50);
+            const maximumWidth = Number.isFinite(configuredWidth) && configuredWidth >= 1
+                ? Math.floor(configuredWidth)
+                : 50;
             await editor.edit(builder => {
                 for (const selection of selections) {
                     builder.replace(
                         selection,
-                        wrapMarkdownTableColumns(document.getText(selection))
+                        wrapMarkdownTableColumns(document.getText(selection), maximumWidth)
                     );
                 }
             });
@@ -4257,6 +4277,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toDos);
     context.subscriptions.push(toUnix);
     context.subscriptions.push(toTogglePipeComma);
+    context.subscriptions.push(toEscapedCsv);
     context.subscriptions.push(csvToMarkdownTable);
     context.subscriptions.push(toWrappedColumns);
     context.subscriptions.push(toUnwrappedColumns);
