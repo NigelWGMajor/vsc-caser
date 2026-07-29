@@ -26,6 +26,11 @@ const markdownExtensions = new Set([
     '.mkd'
 ]);
 
+export interface LocalImageUsagePartition {
+    referencedImagePaths: string[];
+    unusedImagePaths: string[];
+}
+
 export function isImageFilePath(filePath: string): boolean {
     return imageExtensions.has(path.extname(filePath).toLocaleLowerCase());
 }
@@ -51,13 +56,46 @@ export async function findDocumentsReferencingImage(
     imagePath: string,
     searchRoot: string
 ): Promise<string[]> {
-    return findDocumentsReferencingImages([imagePath], searchRoot);
+    return (await scanLocalImageUsage([imagePath], searchRoot)).matchingPaths;
 }
 
 export async function findDocumentsReferencingImages(
     imagePaths: readonly string[],
     searchRoot: string
 ): Promise<string[]> {
+    return (await scanLocalImageUsage(imagePaths, searchRoot)).matchingPaths;
+}
+
+export async function partitionImagesByLocalUsage(
+    imagePaths: readonly string[],
+    searchRoot: string
+): Promise<LocalImageUsagePartition> {
+    const result = await scanLocalImageUsage(imagePaths, searchRoot);
+    return {
+        referencedImagePaths: result.images
+            .filter(image => image.isReferenced)
+            .map(image => image.imagePath),
+        unusedImagePaths: result.images
+            .filter(image => !image.isReferenced)
+            .map(image => image.imagePath)
+    };
+}
+
+interface ImageUsage {
+    imagePath: string;
+    ancestorKeys: Set<string>;
+    isReferenced: boolean;
+}
+
+interface LocalImageUsageScan {
+    images: ImageUsage[];
+    matchingPaths: string[];
+}
+
+async function scanLocalImageUsage(
+    imagePaths: readonly string[],
+    searchRoot: string
+): Promise<LocalImageUsageScan> {
     const absoluteSearchRoot = path.resolve(searchRoot);
     const absoluteImagePaths = [...new Map(imagePaths.map(imagePath => {
         const absoluteImagePath = path.resolve(imagePath);
@@ -66,11 +104,19 @@ export async function findDocumentsReferencingImages(
         isWithin(absoluteSearchRoot, path.dirname(imagePath))
     );
     if (absoluteImagePaths.length === 0) {
-        return [];
+        return { images: [], matchingPaths: [] };
     }
 
-    const directories = [...new Map(absoluteImagePaths.flatMap(imagePath =>
-        ancestorsWithin(path.dirname(imagePath), absoluteSearchRoot)
+    const images = absoluteImagePaths.map(imagePath => ({
+        imagePath,
+        ancestorKeys: new Set(
+            ancestorsWithin(path.dirname(imagePath), absoluteSearchRoot)
+                .map(normalizeForComparison)
+        ),
+        isReferenced: false
+    }));
+    const directories = [...new Map(images.flatMap(image =>
+        ancestorsWithin(path.dirname(image.imagePath), absoluteSearchRoot)
             .map(directory => [normalizeForComparison(directory), directory] as const)
     )).values()];
     const matches: string[] = [];
@@ -90,12 +136,19 @@ export async function findDocumentsReferencingImages(
             .map(entry => path.join(directory, entry.name))
             .sort((left, right) => left.localeCompare(right));
 
+        const directoryKey = normalizeForComparison(directory);
+        const eligibleImages = images.filter(image => image.ancestorKeys.has(directoryKey));
         for (const candidatePath of candidatePaths) {
             try {
                 const content = await fs.readFile(candidatePath, 'utf8');
-                if (absoluteImagePaths.some(imagePath =>
-                    markdownReferencesImage(content, candidatePath, imagePath)
-                )) {
+                let documentMatched = false;
+                for (const image of eligibleImages) {
+                    if (markdownReferencesImage(content, candidatePath, image.imagePath)) {
+                        image.isReferenced = true;
+                        documentMatched = true;
+                    }
+                }
+                if (documentMatched) {
                     matches.push(candidatePath);
                 }
             } catch {
@@ -103,7 +156,7 @@ export async function findDocumentsReferencingImages(
             }
         }
     }
-    return matches;
+    return { images, matchingPaths: matches };
 }
 
 function ancestorsWithin(start: string, searchRoot: string): string[] {

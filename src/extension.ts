@@ -4,7 +4,13 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto-js';
 import * as path from 'path';
-import { nestImagesInMarkdown, NestImagesResult } from './imageNesting';
+import {
+    expandImagePathMove,
+    ImagePathMove,
+    nestImagesInMarkdown,
+    NestImagesResult,
+    planImageLinkUpdatesForMoves
+} from './imageNesting';
 import {
     formatNestedImageMarkdown,
     getClipboardImageExtension,
@@ -15,8 +21,19 @@ import {
 import {
     findDocumentsReferencingImages,
     formatWhereUsedMessage,
-    isImageFilePath
+    isImageFilePath,
+    partitionImagesByLocalUsage
 } from './whereUsedLocally';
+import {
+    DocumentPathMove,
+    expandMarkdownPathMove,
+    isMarkdownFilePath,
+    moveDocumentWithLinks,
+    partitionDocumentsByUsage,
+    planDocumentLinkUpdatesForMoves,
+    repairDocumentLinks,
+    RepairDocumentLinksResult
+} from './documentLinks';
 const math = require('mathjs');
 import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
@@ -209,6 +226,127 @@ class BucketFolderService {
     }
 }
 
+async function buildAutomaticDocumentMoveEdit(
+    files: ReadonlyArray<{ oldUri: vscode.Uri; newUri: vscode.Uri }>,
+    token: vscode.CancellationToken
+): Promise<vscode.WorkspaceEdit> {
+    const edit = new vscode.WorkspaceEdit();
+    const movesByWorkspace = new Map<string, {
+        workspaceFolder: vscode.WorkspaceFolder;
+        documentMoves: DocumentPathMove[];
+        imageMoves: ImagePathMove[];
+    }>();
+
+    for (const { oldUri, newUri } of files) {
+        if (token.isCancellationRequested
+            || oldUri.scheme !== 'file'
+            || newUri.scheme !== 'file') {
+            continue;
+        }
+        const oldWorkspaceFolder = vscode.workspace.getWorkspaceFolder(oldUri);
+        const newWorkspaceFolder = vscode.workspace.getWorkspaceFolder(newUri);
+        if (!oldWorkspaceFolder
+            || !newWorkspaceFolder
+            || oldWorkspaceFolder.uri.toString() !== newWorkspaceFolder.uri.toString()) {
+            continue;
+        }
+        const [documentMoves, imageMoves] = await Promise.all([
+            expandMarkdownPathMove(oldUri.fsPath, newUri.fsPath),
+            expandImagePathMove(oldUri.fsPath, newUri.fsPath)
+        ]);
+        if (documentMoves.length === 0 && imageMoves.length === 0) {
+            continue;
+        }
+        const key = normalizeExplorerPath(oldWorkspaceFolder.uri.fsPath);
+        const group = movesByWorkspace.get(key);
+        if (group) {
+            group.documentMoves.push(...documentMoves);
+            group.imageMoves.push(...imageMoves);
+        } else {
+            movesByWorkspace.set(key, {
+                workspaceFolder: oldWorkspaceFolder,
+                documentMoves,
+                imageMoves
+            });
+        }
+    }
+
+    let linksUpdated = 0;
+    let documentsUpdated = 0;
+    for (const {
+        workspaceFolder,
+        documentMoves,
+        imageMoves
+    } of movesByWorkspace.values()) {
+        if (token.isCancellationRequested) {
+            return new vscode.WorkspaceEdit();
+        }
+        const contentOverrides = new Map(
+            vscode.workspace.textDocuments
+                .filter(document =>
+                    document.uri.scheme === 'file'
+                    && isMarkdownFilePath(document.uri.fsPath)
+                    && vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString()
+                        === workspaceFolder.uri.toString()
+                )
+                .map(document => [document.uri.fsPath, document.getText()] as const)
+        );
+        const documentPlan = await planDocumentLinkUpdatesForMoves(
+            documentMoves,
+            workspaceFolder.uri.fsPath,
+            contentOverrides
+        );
+        const imageContentOverrides = new Map(contentOverrides);
+        for (const update of documentPlan.updates) {
+            imageContentOverrides.set(update.documentPath, update.updatedContent);
+        }
+        const imagePlan = await planImageLinkUpdatesForMoves(
+            imageMoves,
+            documentMoves,
+            workspaceFolder.uri.fsPath,
+            imageContentOverrides
+        );
+        const finalUpdates = new Map(documentPlan.updates.map(update =>
+            [normalizeExplorerPath(update.documentPath), update] as const
+        ));
+        for (const update of imagePlan.updates) {
+            finalUpdates.set(normalizeExplorerPath(update.documentPath), update);
+        }
+        linksUpdated += documentPlan.incomingLinksUpdated
+            + documentPlan.outgoingLinksUpdated
+            + imagePlan.linksUpdated;
+        documentsUpdated += finalUpdates.size;
+
+        for (const update of finalUpdates.values()) {
+            if (token.isCancellationRequested) {
+                return new vscode.WorkspaceEdit();
+            }
+            const uri = vscode.Uri.file(update.documentPath);
+            const openDocument = vscode.workspace.textDocuments.find(
+                document => document.uri.toString() === uri.toString()
+            );
+            const document = openDocument ?? await vscode.workspace.openTextDocument(uri);
+            edit.replace(
+                uri,
+                new vscode.Range(
+                    document.positionAt(0),
+                    document.positionAt(document.getText().length)
+                ),
+                update.updatedContent
+            );
+        }
+    }
+
+    if (linksUpdated > 0) {
+        vscode.window.setStatusBarMessage(
+            `Caser updated ${linksUpdated} Markdown link(s) in `
+            + `${documentsUpdated} document(s).`,
+            5000
+        );
+    }
+    return edit;
+}
+
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
 export function activate(context: vscode.ExtensionContext) {
@@ -228,6 +366,24 @@ export function activate(context: vscode.ExtensionContext) {
     const nestedImagePasteKind = vscode.DocumentDropOrPasteEditKind.Empty
         .append('markdown', 'image', 'caserNested');
     let nestedImagePasteEditsProvided = 0;
+
+    context.subscriptions.push(vscode.workspace.onWillRenameFiles(event => {
+        const enabled = vscode.workspace
+            .getConfiguration('caser')
+            .get<boolean>('updateDocumentLinksOnMove', true);
+        if (!enabled) {
+            return;
+        }
+        event.waitUntil(
+            buildAutomaticDocumentMoveEdit(event.files, event.token).catch(error => {
+                const message = error instanceof Error ? error.message : String(error);
+                vscode.window.showWarningMessage(
+                    `Caser could not update Markdown links for this move: ${message}`
+                );
+                return new vscode.WorkspaceEdit();
+            })
+        );
+    }));
 
     context.subscriptions.push(vscode.languages.registerDocumentPasteEditProvider(
         [{ scheme: 'file' }, { scheme: 'untitled' }],
@@ -3463,6 +3619,261 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
+    const toNewDocumentLocation = vscode.commands.registerCommand(
+        'caser.toNewDocumentLocation',
+        async (clickedUri?: vscode.Uri) => {
+            const activeDocument = vscode.window.activeTextEditor?.document;
+            const sourceUri = clickedUri?.scheme === 'file'
+                && isMarkdownFilePath(clickedUri.fsPath)
+                ? clickedUri
+                : activeDocument?.uri.scheme === 'file'
+                    && isMarkdownFilePath(activeDocument.uri.fsPath)
+                    ? activeDocument.uri
+                    : undefined;
+            if (!sourceUri) {
+                vscode.window.showErrorMessage(
+                    'Select a Markdown file to move to a new document location.'
+                );
+                return;
+            }
+
+            const workspaceFolder = vscode.workspace.getWorkspaceFolder(sourceUri);
+            if (!workspaceFolder) {
+                vscode.window.showErrorMessage(
+                    'The selected Markdown file must be inside the current workspace.'
+                );
+                return;
+            }
+            const destinationUri = await vscode.window.showSaveDialog({
+                defaultUri: sourceUri,
+                saveLabel: 'Move Markdown document',
+                filters: {
+                    Markdown: ['md', 'markdown', 'mdown', 'mdx', 'mkd']
+                }
+            });
+            if (!destinationUri) {
+                return;
+            }
+            if (destinationUri.scheme !== 'file'
+                || !isMarkdownFilePath(destinationUri.fsPath)) {
+                vscode.window.showErrorMessage(
+                    'Choose a Markdown filename inside the current workspace.'
+                );
+                return;
+            }
+            if (vscode.workspace.getWorkspaceFolder(destinationUri)?.uri.toString()
+                !== workspaceFolder.uri.toString()) {
+                vscode.window.showErrorMessage(
+                    'The new document location must remain in the same workspace folder.'
+                );
+                return;
+            }
+
+            const dirtyMarkdownDocuments = vscode.workspace.textDocuments.filter(document =>
+                document.isDirty
+                && document.uri.scheme === 'file'
+                && isMarkdownFilePath(document.uri.fsPath)
+                && vscode.workspace.getWorkspaceFolder(document.uri)?.uri.toString()
+                    === workspaceFolder.uri.toString()
+            );
+            for (const document of dirtyMarkdownDocuments) {
+                if (!await document.save()) {
+                    vscode.window.showErrorMessage(
+                        `Could not save ${path.basename(document.uri.fsPath)} before moving `
+                        + 'the document.'
+                    );
+                    return;
+                }
+            }
+
+            try {
+                const result = await vscode.window.withProgress(
+                    {
+                        location: vscode.ProgressLocation.Notification,
+                        title: `Moving ${path.basename(sourceUri.fsPath)}`,
+                        cancellable: false
+                    },
+                    () => moveDocumentWithLinks(
+                        sourceUri.fsPath,
+                        destinationUri.fsPath,
+                        workspaceFolder.uri.fsPath
+                    )
+                );
+                await selectExplorerPaths([destinationUri.fsPath]);
+                vscode.window.showInformationMessage(
+                    `Moved ${path.basename(result.sourcePath)} to `
+                    + `${path.relative(workspaceFolder.uri.fsPath, result.destinationPath)}. `
+                    + `Updated ${result.outgoingLinksUpdated} outgoing and `
+                    + `${result.incomingLinksUpdated} incoming link(s) across `
+                    + `${result.documentsUpdated} document(s).`
+                );
+            } catch (error) {
+                const message = error instanceof Error ? error.message : String(error);
+                vscode.window.showErrorMessage(`Could not move the Markdown document: ${message}`);
+            }
+        }
+    );
+    const toRepairDocumentLinks = vscode.commands.registerCommand(
+        'caser.toRepairDocumentLinks',
+        async (clickedUri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+            const activeDocument = vscode.window.activeTextEditor?.document;
+            const requestedUris = selectedUris?.length
+                ? selectedUris
+                : clickedUri
+                    ? [clickedUri]
+                    : activeDocument
+                        ? [activeDocument.uri]
+                        : [];
+            const markdownUris = [...new Map(requestedUris
+                .filter(uri => uri.scheme === 'file' && isMarkdownFilePath(uri.fsPath))
+                .map(uri => [normalizeExplorerPath(uri.fsPath), uri])
+            ).values()];
+            if (markdownUris.length === 0) {
+                vscode.window.showErrorMessage(
+                    'Select one or more Markdown files to repair their document links.'
+                );
+                return;
+            }
+
+            const results: RepairDocumentLinksResult[] = [];
+            const failures: string[] = [];
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Repairing Markdown document links',
+                    cancellable: false
+                },
+                async progress => {
+                    for (let index = 0; index < markdownUris.length; index++) {
+                        const uri = markdownUris[index];
+                        progress.report({
+                            message: `${path.basename(uri.fsPath)} `
+                                + `(${index + 1}/${markdownUris.length})`
+                        });
+                        try {
+                            const openDocument = vscode.workspace.textDocuments.find(
+                                document => document.uri.toString() === uri.toString()
+                            );
+                            if (openDocument?.isDirty && !await openDocument.save()) {
+                                throw new Error(
+                                    `Could not save ${uri.fsPath} before repairing its links.`
+                                );
+                            }
+                            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+                            results.push(await repairDocumentLinks(
+                                uri.fsPath,
+                                workspaceFolder?.uri.fsPath ?? path.dirname(uri.fsPath)
+                            ));
+                        } catch (error) {
+                            const message = error instanceof Error ? error.message : String(error);
+                            failures.push(`${path.basename(uri.fsPath)}: ${message}`);
+                        }
+                    }
+                }
+            );
+
+            const totals = results.reduce(
+                (sum, result) => ({
+                    links: sum.links + result.links,
+                    repaired: sum.repaired + result.repaired,
+                    broken: sum.broken + result.broken,
+                    unchanged: sum.unchanged + result.unchanged
+                }),
+                { links: 0, repaired: 0, broken: 0, unchanged: 0 }
+            );
+            const summary =
+                `to-RepairDocumentLinks scanned ${markdownUris.length} file(s): `
+                + `${totals.links} link(s), ${totals.repaired} repaired, `
+                + `${totals.broken} broken, ${totals.unchanged} unchanged.`;
+            if (failures.length > 0) {
+                vscode.window.showWarningMessage(
+                    `${summary} ${failures.length} file(s) failed: ${failures.join('; ')}`
+                );
+            } else {
+                vscode.window.showInformationMessage(summary);
+            }
+        }
+    );
+    const toUnreferencedDocuments = vscode.commands.registerCommand(
+        'caser.toUnreferencedDocuments',
+        async (clickedUri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+            const requestedUris = selectedUris?.length
+                ? selectedUris
+                : clickedUri
+                    ? [clickedUri]
+                    : [];
+            const documentUris = [...new Map(requestedUris
+                .filter(uri => uri.scheme === 'file' && isMarkdownFilePath(uri.fsPath))
+                .map(uri => [normalizeExplorerPath(uri.fsPath), uri])
+            ).values()];
+            if (documentUris.length === 0) {
+                vscode.window.showErrorMessage(
+                    'Select one or more Markdown files to find the unreferenced documents.'
+                );
+                return;
+            }
+
+            const workspaceGroups = new Map<string, {
+                workspaceFolder: vscode.WorkspaceFolder;
+                documentUris: vscode.Uri[];
+            }>();
+            for (const documentUri of documentUris) {
+                const workspaceFolder = vscode.workspace.getWorkspaceFolder(documentUri);
+                if (!workspaceFolder) {
+                    continue;
+                }
+                const key = normalizeExplorerPath(workspaceFolder.uri.fsPath);
+                const group = workspaceGroups.get(key);
+                if (group) {
+                    group.documentUris.push(documentUri);
+                } else {
+                    workspaceGroups.set(key, {
+                        workspaceFolder,
+                        documentUris: [documentUri]
+                    });
+                }
+            }
+            if (workspaceGroups.size === 0) {
+                vscode.window.showErrorMessage(
+                    'The selected Markdown files must be inside the current workspace.'
+                );
+                return;
+            }
+
+            const partitions = await Promise.all([...workspaceGroups.values()].map(
+                group => partitionDocumentsByUsage(
+                    group.documentUris.map(uri => uri.fsPath),
+                    group.workspaceFolder.uri.fsPath
+                )
+            ));
+            const referencedDocumentPaths = partitions.flatMap(
+                partition => partition.referencedDocumentPaths
+            );
+            const unusedDocumentPaths = partitions.flatMap(
+                partition => partition.unusedDocumentPaths
+            );
+            const selectionResult = await selectExplorerPaths(unusedDocumentPaths);
+            if (selectionResult.unselectedPaths.length > 0) {
+                vscode.window.showWarningMessage(
+                    `Selected ${selectionResult.selectedPaths.length} of `
+                    + `${unusedDocumentPaths.length} unreferenced document(s) in the Explorer.`
+                );
+                return;
+            }
+            if (unusedDocumentPaths.length === 0) {
+                vscode.window.showInformationMessage(
+                    `All ${referencedDocumentPaths.length} selected Markdown file(s) are `
+                    + 'referenced by other workspace documents. '
+                    + 'The Explorer selection has been cleared.'
+                );
+                return;
+            }
+            vscode.window.showInformationMessage(
+                `Selected ${unusedDocumentPaths.length} unreferenced document(s) in the Explorer; `
+                + `deselected ${referencedDocumentPaths.length} referenced document(s).`
+            );
+        }
+    );
     const toNestImages = vscode.commands.registerCommand(
         'caser.toNestImages',
         async (clickedUri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
@@ -3609,18 +4020,30 @@ export function activate(context: vscode.ExtensionContext) {
                     [normalizeExplorerPath(matchingPath), matchingPath] as const
                 )
             )).values()];
-            const selectionResult = await selectExplorerPaths(matchingPaths);
 
             if (matchingPaths.length === 0) {
+                const restoredSelection = await selectExplorerPaths(
+                    imageUris.map(uri => uri.fsPath)
+                );
                 const subject = imageUris.length === 1
                     ? path.basename(imageUris[0].fsPath)
                     : `${imageUris.length} selected images`;
-                vscode.window.showInformationMessage(
-                    `No local documents reference ${subject}.`
-                );
+                if (restoredSelection.unselectedPaths.length === 0) {
+                    vscode.window.showInformationMessage(
+                        `No local documents reference ${subject}. `
+                        + 'The original image selection has been restored in the Explorer.'
+                    );
+                } else {
+                    vscode.window.showWarningMessage(
+                        `No local documents reference ${subject}. Restored `
+                        + `${restoredSelection.selectedPaths.length} of ${imageUris.length} `
+                        + 'original image(s) in the Explorer.'
+                    );
+                }
                 return;
             }
 
+            const selectionResult = await selectExplorerPaths(matchingPaths);
             if (matchesByWorkspace.length === 1) {
                 const { group } = matchesByWorkspace[0];
                 vscode.window.showInformationMessage(formatWhereUsedMessage(
@@ -3641,6 +4064,85 @@ export function activate(context: vscode.ExtensionContext) {
                     + `${matchingPaths.length} Markdown file(s) in the Explorer.`
                 );
             }
+        }
+    );
+    const toUnusedImages = vscode.commands.registerCommand(
+        'caser.toUnusedImages',
+        async (clickedUri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+            const requestedUris = selectedUris?.length
+                ? selectedUris
+                : clickedUri
+                    ? [clickedUri]
+                    : [];
+            const imageUris = [...new Map(requestedUris
+                .filter(uri => uri.scheme === 'file' && isImageFilePath(uri.fsPath))
+                .map(uri => [normalizeExplorerPath(uri.fsPath), uri])
+            ).values()];
+            if (imageUris.length === 0) {
+                vscode.window.showErrorMessage(
+                    'Select one or more image files to find the unused images.'
+                );
+                return;
+            }
+
+            const workspaceGroups = new Map<string, {
+                workspaceFolder: vscode.WorkspaceFolder;
+                imageUris: vscode.Uri[];
+            }>();
+            for (const imageUri of imageUris) {
+                const workspaceFolder = vscode.workspace.getWorkspaceFolder(imageUri);
+                if (!workspaceFolder) {
+                    continue;
+                }
+                const key = normalizeExplorerPath(workspaceFolder.uri.fsPath);
+                const group = workspaceGroups.get(key);
+                if (group) {
+                    group.imageUris.push(imageUri);
+                } else {
+                    workspaceGroups.set(key, { workspaceFolder, imageUris: [imageUri] });
+                }
+            }
+            if (workspaceGroups.size === 0) {
+                vscode.window.showErrorMessage(
+                    'The selected images must be inside the current workspace.'
+                );
+                return;
+            }
+
+            const partitions = await Promise.all([...workspaceGroups.values()].map(
+                group => partitionImagesByLocalUsage(
+                    group.imageUris.map(uri => uri.fsPath),
+                    group.workspaceFolder.uri.fsPath
+                )
+            ));
+            const referencedImagePaths = partitions.flatMap(
+                partition => partition.referencedImagePaths
+            );
+            const unusedImagePaths = partitions.flatMap(
+                partition => partition.unusedImagePaths
+            );
+            const selectionResult = await selectExplorerPaths(unusedImagePaths);
+
+            if (selectionResult.unselectedPaths.length > 0) {
+                vscode.window.showWarningMessage(
+                    `Selected ${selectionResult.selectedPaths.length} of `
+                    + `${unusedImagePaths.length} unused image(s) in the Explorer.`
+                );
+                return;
+            }
+
+            if (unusedImagePaths.length === 0) {
+                vscode.window.showInformationMessage(
+                    `All ${referencedImagePaths.length} selected image(s) are referenced locally `
+                    + 'or upstream. The Explorer selection has been cleared.'
+                );
+                return;
+            }
+
+            vscode.window.showInformationMessage(
+                `Selected ${unusedImagePaths.length} unused image(s) in the Explorer; `
+                + `deselected ${referencedImagePaths.length} referenced image(s).`
+            );
         }
     );
     context.subscriptions.push(toCamelCase);
@@ -3720,9 +4222,13 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toBash);
     context.subscriptions.push(toPowershell);
     context.subscriptions.push(triageNextRowAsFileName);
+    context.subscriptions.push(toNewDocumentLocation);
+    context.subscriptions.push(toRepairDocumentLinks);
+    context.subscriptions.push(toUnreferencedDocuments);
     context.subscriptions.push(toNestImages);
     context.subscriptions.push(toPasteNestedImage);
     context.subscriptions.push(toWhereUsedLocally);
+    context.subscriptions.push(toUnusedImages);
 
 }
 

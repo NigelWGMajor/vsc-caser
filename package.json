@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.44.",
-    "version": "1.0.44",
+    "description": "This is the README for extension \"caser\" version 1.0.45.",
+    "version": "1.0.45",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -27,6 +27,11 @@
                     "type": "boolean",
                     "default": true,
                     "description": "Whether configured dimmable text is dimmed. The to-Dimmed command toggles and persists this setting."
+                },
+                "caser.updateDocumentLinksOnMove": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Automatically update Markdown document and image links when files or folders are renamed or moved in the VS Code Explorer."
                 },
                 "caser.dimmableMatches": {
                     "type": "array",
@@ -560,6 +565,22 @@
             {
                 "command": "caser.toWhereUsedLocally",
                 "title": "to-WhereUsedLocally"
+            },
+            {
+                "command": "caser.toUnusedImages",
+                "title": "to-UnusedImages"
+            },
+            {
+                "command": "caser.toRepairDocumentLinks",
+                "title": "to-RepairDocumentLinks"
+            },
+            {
+                "command": "caser.toUnreferencedDocuments",
+                "title": "to-UnreferencedDocuments"
+            },
+            {
+                "command": "caser.toNewDocumentLocation",
+                "title": "to-NewDocumentLocation"
             }
         ],
         "configurationDefaults": {
@@ -583,7 +604,27 @@
                     "group": "navigation@10"
                 },
                 {
+                    "command": "caser.toRepairDocumentLinks",
+                    "when": "resourceExtname =~ /\\.(markdown|md|mdown|mdx|mkd)$/i",
+                    "group": "navigation@10"
+                },
+                {
+                    "command": "caser.toUnreferencedDocuments",
+                    "when": "resourceExtname =~ /\\.(markdown|md|mdown|mdx|mkd)$/i",
+                    "group": "navigation@10"
+                },
+                {
+                    "command": "caser.toNewDocumentLocation",
+                    "when": "resourceExtname =~ /\\.(markdown|md|mdown|mdx|mkd)$/i",
+                    "group": "navigation@10"
+                },
+                {
                     "command": "caser.toWhereUsedLocally",
+                    "when": "resourceExtname =~ /\\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|tiff?|webp)$/i",
+                    "group": "navigation@10"
+                },
+                {
+                    "command": "caser.toUnusedImages",
                     "when": "resourceExtname =~ /\\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|tiff?|webp)$/i",
                     "group": "navigation@10"
                 }

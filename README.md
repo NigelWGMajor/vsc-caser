@@ -1,6 +1,6 @@
 # caser README
 
-This is the README for extension "caser" v 1.0.39
+This is the README for extension "caser" v 1.0.45
 
 ## Building and Running
 
@@ -34,6 +34,8 @@ Suggested keybindings:
 ## caser Properties
 
 **dimActive** controls whether configured matches are dimmed. It defaults to `true`, persists in VS Code's user settings, and is toggled by the `to-Dimmed` command.
+
+**updateDocumentLinksOnMove** controls automatic Markdown link maintenance for files and folders renamed or moved in the VS Code Explorer. It defaults to `true`. When enabled, Caser updates links inside moved Markdown documents, inbound links from other Markdown documents, and inbound Markdown image references for moved images.
 
 **dimmableMatches** defines which text ranges to dim in the current language. This is an array of strings: each string starts with the target language id (e.g. `markdown` or `sql`) followed by one or more regex expressions, all seperated with colons. For example, to dim lines with `<pre` or `pre>` tags in markdown, you would set the property to: `markdown:<pre:pre>`. To dim lines with `--` in SQL, you would set the property to: `sql:--`. Only one string per language, but multiple regex expressions are supported.
 
@@ -199,6 +201,33 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 |        |             | The selection (or current line) moves to that file.                  |
 |        |             | Later uses append to the same file for the current VS Code session.  |
 |        | to-Anchor   | Inserts `<a id="ref-N"></a>` before line N and copies a link such as `[ref-N](./path/file.md#ref-N)`. |
+
+### Nested images
+
+The nested-image commands keep Markdown images beside their documents in an `image` folder.
+
+| method | where it runs | behavior |
+| ------ | ------------- | -------- |
+| `to-PasteNestedImage` | Markdown editor | `Ctrl+V`/`Cmd+V` saves a pasted image in the document's `image` folder and inserts its Markdown reference. Selected text becomes the image title and lower-kebab filename; ordinary text paste still works normally. |
+| `to-NestImages` | Explorer context menu for one or more Markdown files | Finds their local image references, moves images into the adjacent `image` folder when needed, repairs resolvable paths, and marks broken references. |
+| `to-WhereUsedLocally` | Explorer context menu for one or more image files | Selects Markdown documents in the image folder or any parent folder up to the workspace root that reference the selected image(s). If no references are found, the original image selection is restored in Explorer so the unused images can be deleted. |
+| `to-UnusedImages` | Explorer context menu for one or more selected image files | Scans each image for references in its own folder and parent folders up to the workspace root. Referenced images are deselected, leaving only unused images selected for easy deletion. |
+
+`to-WhereUsedLocally` resolves exact inline and reference-style Markdown image paths, including URL-encoded paths and query or fragment suffixes. It does not treat a plain filename mention as a reference, and it does not search sibling or descendant folders.
+
+### Document links
+
+The document-link commands help recover links after Markdown files move and identify documents with no inbound links.
+
+| method | where it runs | behavior |
+| ------ | ------------- | -------- |
+| `to-RepairDocumentLinks` | Explorer context menu for one or more Markdown files | Checks local links to other Markdown documents. Existing targets are left alone, uniquely identifiable moved targets are relinked with anchors and query strings preserved, and unresolved or ambiguous links are marked with `⛓️‍💥` in their label. |
+| `to-UnreferencedDocuments` | Explorer context menu for one or more selected Markdown files | Scans Markdown links throughout the workspace, deselects documents referenced by another document, and leaves only unreferenced documents selected for review or deletion. Self-links do not count as inbound references. |
+| `to-NewDocumentLocation` | Explorer context menu for a single Markdown file | Prompts for a new workspace path, moves the document, rewrites its working relative Markdown links for the new folder, and updates links in other workspace documents that referenced its old location. |
+
+Repair uses the original filename and path tail to locate a moved document. A unique filename is repaired automatically; when duplicate filenames make the target uncertain, the link is marked broken instead of guessing. External links, heading-only links, image links, and links to non-Markdown files are ignored.
+
+With **Caser > Update Document Links On Move** enabled, the same link maintenance runs automatically when Markdown documents, images, or folders containing them are renamed or dragged to a new location in the VS Code Explorer. Document links are recalculated in both directions, and exact inbound Markdown image references follow renamed or moved images. Folder moves are handled as one coordinated operation so links between files that move together remain stable. Moves made outside VS Code do not trigger this behavior.
 
 ### Bucketed save/load
 

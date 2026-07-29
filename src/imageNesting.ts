@@ -17,6 +17,28 @@ export interface NestImagesResult {
     unchanged: number;
 }
 
+export interface ImagePathMove {
+    sourcePath: string;
+    destinationPath: string;
+}
+
+export interface RelatedDocumentPathMove {
+    sourcePath: string;
+    destinationPath: string;
+}
+
+export interface ImageLinkContentUpdate {
+    documentPath: string;
+    originalContent: string;
+    updatedContent: string;
+}
+
+export interface ImageMoveLinkPlan {
+    moves: ImagePathMove[];
+    updates: ImageLinkContentUpdate[];
+    linksUpdated: number;
+}
+
 export function markdownReferencesImage(
     content: string,
     markdownPath: string,
@@ -65,8 +87,205 @@ const ignoredSearchDirectories = new Set([
     '.git',
     '.hg',
     '.svn',
-    'node_modules'
+    '.vscode-test',
+    'dist',
+    'node_modules',
+    'out'
 ]);
+
+const imageExtensions = new Set([
+    '.avif',
+    '.bmp',
+    '.gif',
+    '.heic',
+    '.heif',
+    '.ico',
+    '.jpeg',
+    '.jpg',
+    '.png',
+    '.svg',
+    '.tif',
+    '.tiff',
+    '.webp'
+]);
+
+const markdownExtensions = new Set([
+    '.markdown',
+    '.md',
+    '.mdown',
+    '.mdx',
+    '.mkd'
+]);
+
+export async function expandImagePathMove(
+    sourcePath: string,
+    destinationPath: string
+): Promise<ImagePathMove[]> {
+    const absoluteSourcePath = path.resolve(sourcePath);
+    const absoluteDestinationPath = path.resolve(destinationPath);
+    let stat;
+    try {
+        stat = await fs.stat(absoluteSourcePath);
+    } catch {
+        return [];
+    }
+    if (stat.isFile()) {
+        return imageExtensions.has(path.extname(absoluteSourcePath).toLocaleLowerCase())
+            && imageExtensions.has(path.extname(absoluteDestinationPath).toLocaleLowerCase())
+            ? [{
+                sourcePath: absoluteSourcePath,
+                destinationPath: absoluteDestinationPath
+            }]
+            : [];
+    }
+    if (!stat.isDirectory()) {
+        return [];
+    }
+
+    const moves: ImagePathMove[] = [];
+    const pending = [absoluteSourcePath];
+    while (pending.length > 0) {
+        const directory = pending.shift()!;
+        let entries;
+        try {
+            entries = await fs.readdir(directory, { withFileTypes: true });
+        } catch {
+            continue;
+        }
+        entries.sort((left, right) => left.name.localeCompare(right.name));
+        for (const entry of entries) {
+            const childPath = path.join(directory, entry.name);
+            if (entry.isDirectory() && !ignoredSearchDirectories.has(entry.name)) {
+                pending.push(childPath);
+            } else if (entry.isFile()
+                && imageExtensions.has(path.extname(childPath).toLocaleLowerCase())) {
+                moves.push({
+                    sourcePath: childPath,
+                    destinationPath: path.join(
+                        absoluteDestinationPath,
+                        path.relative(absoluteSourcePath, childPath)
+                    )
+                });
+            }
+        }
+    }
+    return moves;
+}
+
+export async function planImageLinkUpdatesForMoves(
+    imageMoves: readonly ImagePathMove[],
+    documentMoves: readonly RelatedDocumentPathMove[],
+    searchRoot: string,
+    contentOverrides: ReadonlyMap<string, string> = new Map()
+): Promise<ImageMoveLinkPlan> {
+    const absoluteSearchRoot = path.resolve(searchRoot);
+    const normalizedImageMoves = [...new Map(imageMoves
+        .map(move => ({
+            sourcePath: path.resolve(move.sourcePath),
+            destinationPath: path.resolve(move.destinationPath)
+        }))
+        .filter(move =>
+            isWithin(absoluteSearchRoot, move.sourcePath)
+            && isWithin(absoluteSearchRoot, move.destinationPath)
+        )
+        .map(move => [normalizeForComparison(move.sourcePath), move])
+    ).values()];
+    const imageMoveBySourceKey = new Map(normalizedImageMoves.map(move =>
+        [normalizeForComparison(move.sourcePath), move] as const
+    ));
+    const documentMoveBySourceKey = new Map(documentMoves
+        .map(move => ({
+            sourcePath: path.resolve(move.sourcePath),
+            destinationPath: path.resolve(move.destinationPath)
+        }))
+        .filter(move =>
+            isWithin(absoluteSearchRoot, move.sourcePath)
+            && isWithin(absoluteSearchRoot, move.destinationPath)
+        )
+        .map(move => [normalizeForComparison(move.sourcePath), move] as const)
+    );
+    if (imageMoveBySourceKey.size === 0 && documentMoveBySourceKey.size === 0) {
+        return { moves: [], updates: [], linksUpdated: 0 };
+    }
+
+    const overridesByKey = new Map([...contentOverrides].map(([documentPath, content]) =>
+        [normalizeForComparison(documentPath), content] as const
+    ));
+    const workspaceDocuments = await findWorkspaceMarkdownDocuments(absoluteSearchRoot);
+    const updates: ImageLinkContentUpdate[] = [];
+    const fileExistence = new Map<string, boolean>();
+    let linksUpdated = 0;
+
+    for (const documentPath of workspaceDocuments) {
+        const documentKey = normalizeForComparison(documentPath);
+        let content = overridesByKey.get(documentKey);
+        if (content === undefined) {
+            try {
+                content = await fs.readFile(documentPath, 'utf8');
+            } catch {
+                continue;
+            }
+        }
+        const documentMove = documentMoveBySourceKey.get(documentKey);
+        const updatedDocumentPath = documentMove?.destinationPath ?? documentPath;
+        const replacements: Replacement[] = [];
+
+        for (const occurrence of findMarkdownImageOccurrences(content)) {
+            const parsed = parseLocalDestination(occurrence.destination);
+            if (!parsed) {
+                continue;
+            }
+            const resolvedPath = path.isAbsolute(parsed.filePath)
+                ? path.normalize(parsed.filePath)
+                : path.resolve(path.dirname(documentPath), parsed.filePath);
+            const resolvedKey = normalizeForComparison(resolvedPath);
+            let targetExists = fileExistence.get(resolvedKey);
+            if (targetExists === undefined) {
+                targetExists = await isFile(resolvedPath);
+                fileExistence.set(resolvedKey, targetExists);
+            }
+            if (!targetExists) {
+                continue;
+            }
+            const imageMove = imageMoveBySourceKey.get(resolvedKey);
+            if (!documentMove && !imageMove) {
+                continue;
+            }
+
+            const updatedImagePath = imageMove?.destinationPath ?? resolvedPath;
+            const updatedDestination = formatMarkdownDestination(
+                path.relative(path.dirname(updatedDocumentPath), updatedImagePath),
+                parsed.suffix
+            );
+            if (updatedDestination !== occurrence.destination) {
+                replacements.push({
+                    start: occurrence.destinationStart,
+                    end: occurrence.destinationEnd,
+                    text: updatedDestination
+                });
+                linksUpdated++;
+            }
+        }
+
+        const updatedContent = applyReplacements(
+            content,
+            deduplicateReplacements(replacements)
+        );
+        if (updatedContent !== content) {
+            updates.push({
+                documentPath,
+                originalContent: content,
+                updatedContent
+            });
+        }
+    }
+
+    return {
+        moves: normalizedImageMoves,
+        updates,
+        linksUpdated
+    };
+}
 
 export async function nestImagesInMarkdown(
     markdownPath: string,
@@ -497,6 +716,32 @@ async function findImageDirectories(searchRoot: string): Promise<string[]> {
         }
     }
 
+    return found;
+}
+
+async function findWorkspaceMarkdownDocuments(searchRoot: string): Promise<string[]> {
+    const found: string[] = [];
+    const pending = [path.resolve(searchRoot)];
+
+    while (pending.length > 0) {
+        const directory = pending.shift()!;
+        let entries;
+        try {
+            entries = await fs.readdir(directory, { withFileTypes: true });
+        } catch {
+            continue;
+        }
+        entries.sort((left, right) => left.name.localeCompare(right.name));
+        for (const entry of entries) {
+            const childPath = path.join(directory, entry.name);
+            if (entry.isDirectory() && !ignoredSearchDirectories.has(entry.name)) {
+                pending.push(childPath);
+            } else if (entry.isFile()
+                && markdownExtensions.has(path.extname(childPath).toLocaleLowerCase())) {
+                found.push(childPath);
+            }
+        }
+    }
     return found;
 }
 

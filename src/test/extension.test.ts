@@ -7,7 +7,11 @@ import * as path from 'path';
 // as well as import your extension to test it
 import * as vscode from 'vscode';
 import { buildAnchorDetails } from '../extension';
-import { nestImagesInMarkdown } from '../imageNesting';
+import {
+	expandImagePathMove,
+	nestImagesInMarkdown,
+	planImageLinkUpdatesForMoves
+} from '../imageNesting';
 import {
 	formatNestedImageMarkdown,
 	getClipboardImageExtension,
@@ -18,8 +22,17 @@ import {
     findDocumentsReferencingImage,
     findDocumentsReferencingImages,
     formatWhereUsedMessage,
-    isImageFilePath
+    isImageFilePath,
+    partitionImagesByLocalUsage
 } from '../whereUsedLocally';
+import {
+	brokenDocumentLinkMarker,
+	expandMarkdownPathMove,
+	moveDocumentWithLinks,
+	partitionDocumentsByUsage,
+	planDocumentLinkUpdatesForMoves,
+	repairDocumentLinks
+} from '../documentLinks';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -575,6 +588,284 @@ suite('Extension Test Suite', () => {
 			formatWhereUsedMessage(images, matchingPaths, workspaceRoot),
 			'2 images are used by 1 Markdown file: page.md'
 		);
+	});
+
+	test('to-UnusedImages partitions referenced and unused selected images', async () => {
+		await withTemporaryFolder(async root => {
+			const imageFolder = path.join(root, 'image');
+			const referencedImage = path.join(imageFolder, 'referenced.png');
+			const unusedImage = path.join(imageFolder, 'unused.png');
+			await fs.mkdir(imageFolder, { recursive: true });
+			await fs.writeFile(referencedImage, 'referenced image');
+			await fs.writeFile(unusedImage, 'unused image');
+			await fs.writeFile(
+				path.join(root, 'page.md'),
+				'![Referenced](image/referenced.png)'
+			);
+
+			assert.deepStrictEqual(
+				await partitionImagesByLocalUsage(
+					[referencedImage, unusedImage],
+					root
+				),
+				{
+					referencedImagePaths: [referencedImage],
+					unusedImagePaths: [unusedImage]
+				}
+			);
+		});
+	});
+
+	test('to-UnusedImages only treats same-folder or upstream documents as references', async () => {
+		await withTemporaryFolder(async root => {
+			const firstFolder = path.join(root, 'first');
+			const secondFolder = path.join(root, 'second');
+			const image = path.join(firstFolder, 'image', 'diagram.png');
+			await fs.mkdir(path.dirname(image), { recursive: true });
+			await fs.mkdir(secondFolder, { recursive: true });
+			await fs.writeFile(image, 'image');
+			await fs.writeFile(
+				path.join(secondFolder, 'sibling.md'),
+				'![Diagram](../first/image/diagram.png)'
+			);
+
+			assert.deepStrictEqual(
+				await partitionImagesByLocalUsage([image], root),
+				{
+					referencedImagePaths: [],
+					unusedImagePaths: [image]
+				}
+			);
+		});
+	});
+
+	test('to-RepairDocumentLinks repairs a uniquely moved target and marks missing links', async () => {
+		await withTemporaryFolder(async root => {
+			const page = path.join(root, 'notes', 'page.md');
+			const movedTarget = path.join(root, 'guides', 'setup guide.md');
+			await fs.mkdir(path.dirname(page), { recursive: true });
+			await fs.mkdir(path.dirname(movedTarget), { recursive: true });
+			await fs.writeFile(movedTarget, '# Setup');
+			await fs.writeFile(page, [
+				'[Setup](../old/setup%20guide.md#install)',
+				'[Missing](missing.md)',
+				'![Not a document](missing.md)',
+				'[External](https://example.com/readme.md)'
+			].join('\n'));
+
+			const result = await repairDocumentLinks(page, root);
+
+			assert.deepStrictEqual(result, {
+				markdownPath: page,
+				links: 2,
+				repaired: 1,
+				broken: 1,
+				unchanged: 0
+			});
+			assert.strictEqual(
+				await fs.readFile(page, 'utf8'),
+				[
+					'[Setup](<../guides/setup guide.md#install>)',
+					`[${brokenDocumentLinkMarker} Missing](missing.md)`,
+					'![Not a document](missing.md)',
+					'[External](https://example.com/readme.md)'
+				].join('\n')
+			);
+		});
+	});
+
+	test('to-RepairDocumentLinks does not guess between duplicate filenames', async () => {
+		await withTemporaryFolder(async root => {
+			const page = path.join(root, 'page.md');
+			await fs.mkdir(path.join(root, 'first'), { recursive: true });
+			await fs.mkdir(path.join(root, 'second'), { recursive: true });
+			await fs.writeFile(path.join(root, 'first', 'topic.md'), '# First');
+			await fs.writeFile(path.join(root, 'second', 'topic.md'), '# Second');
+			await fs.writeFile(page, '[Topic](old/topic.md)');
+
+			const result = await repairDocumentLinks(page, root);
+
+			assert.strictEqual(result.repaired, 0);
+			assert.strictEqual(result.broken, 1);
+			assert.strictEqual(
+				await fs.readFile(page, 'utf8'),
+				`[${brokenDocumentLinkMarker} Topic](old/topic.md)`
+			);
+		});
+	});
+
+	test('to-UnreferencedDocuments recognizes direct and uniquely recoverable inbound links', async () => {
+		await withTemporaryFolder(async root => {
+			const first = path.join(root, 'first.md');
+			const second = path.join(root, 'second.md');
+			const moved = path.join(root, 'archive', 'moved.md');
+			const index = path.join(root, 'index.md');
+			await fs.mkdir(path.dirname(moved), { recursive: true });
+			await fs.writeFile(first, '[Self](first.md)');
+			await fs.writeFile(second, '# Second');
+			await fs.writeFile(moved, '# Moved');
+			await fs.writeFile(index, [
+				'[Second](second.md)',
+				'[Moved](old/moved.md)'
+			].join('\n'));
+
+			assert.deepStrictEqual(
+				await partitionDocumentsByUsage([first, second, moved], root),
+				{
+					referencedDocumentPaths: [second, moved],
+					unusedDocumentPaths: [first]
+				}
+			);
+		});
+	});
+
+	test('to-NewDocumentLocation preserves outgoing and incoming document links', async () => {
+		await withTemporaryFolder(async root => {
+			const source = path.join(root, 'docs', 'source.md');
+			const destination = path.join(root, 'archive', '2026', 'source.md');
+			const target = path.join(root, 'shared', 'target.md');
+			const index = path.join(root, 'index.md');
+			const referencePage = path.join(root, 'refs', 'reference.md');
+			await fs.mkdir(path.dirname(source), { recursive: true });
+			await fs.mkdir(path.dirname(target), { recursive: true });
+			await fs.mkdir(path.dirname(referencePage), { recursive: true });
+			await fs.writeFile(target, '# Target');
+			await fs.writeFile(source, [
+				'[Target](../shared/target.md#part)',
+				'[Self](source.md#top)',
+				'![Image](image.png)'
+			].join('\n'));
+			await fs.writeFile(index, '[Source](docs/source.md?view=1)');
+			await fs.writeFile(referencePage, [
+				'[Source][source]',
+				'',
+				'[source]: ../docs/source.md#ref'
+			].join('\n'));
+
+			const result = await moveDocumentWithLinks(source, destination, root);
+
+			assert.deepStrictEqual(result, {
+				sourcePath: source,
+				destinationPath: destination,
+				incomingLinksUpdated: 2,
+				outgoingLinksUpdated: 1,
+				documentsUpdated: 3
+			});
+			assert.strictEqual(await fileExists(source), false);
+			assert.strictEqual(await fileExists(destination), true);
+			assert.strictEqual(
+				await fs.readFile(destination, 'utf8'),
+				[
+					'[Target](../../shared/target.md#part)',
+					'[Self](source.md#top)',
+					'![Image](image.png)'
+				].join('\n')
+			);
+			assert.strictEqual(
+				await fs.readFile(index, 'utf8'),
+				'[Source](archive/2026/source.md?view=1)'
+			);
+			assert.strictEqual(
+				await fs.readFile(referencePage, 'utf8'),
+				[
+					'[Source][source]',
+					'',
+					'[source]: ../archive/2026/source.md#ref'
+				].join('\n')
+			);
+		});
+	});
+
+	test('automatic folder moves map Markdown descendants and preserve internal links', async () => {
+		await withTemporaryFolder(async root => {
+			const sourceFolder = path.join(root, 'section');
+			const destinationFolder = path.join(root, 'archive');
+			const first = path.join(sourceFolder, 'first.md');
+			const second = path.join(sourceFolder, 'second.md');
+			const index = path.join(root, 'index.md');
+			await fs.mkdir(sourceFolder, { recursive: true });
+			await fs.writeFile(first, '[Second](second.md)');
+			await fs.writeFile(second, '# Second');
+			await fs.writeFile(index, '[First](section/first.md)');
+
+			const moves = await expandMarkdownPathMove(
+				sourceFolder,
+				destinationFolder
+			);
+			const plan = await planDocumentLinkUpdatesForMoves(moves, root);
+
+			assert.deepStrictEqual(moves, [
+				{
+					sourcePath: first,
+					destinationPath: path.join(destinationFolder, 'first.md')
+				},
+				{
+					sourcePath: second,
+					destinationPath: path.join(destinationFolder, 'second.md')
+				}
+			]);
+			assert.strictEqual(plan.outgoingLinksUpdated, 0);
+			assert.strictEqual(plan.incomingLinksUpdated, 1);
+			assert.strictEqual(plan.updates.length, 1);
+			assert.strictEqual(
+				plan.updates[0].updatedContent,
+				'[First](archive/first.md)'
+			);
+		});
+	});
+
+	test('automatic image moves update inbound Markdown image references', async () => {
+		await withTemporaryFolder(async root => {
+			const imageFolder = path.join(root, 'image');
+			const originalImage = path.join(imageFolder, 'before.png');
+			const movedImage = path.join(imageFolder, 'after.png');
+			const page = path.join(root, 'page.md');
+			await fs.mkdir(imageFolder, { recursive: true });
+			await fs.writeFile(originalImage, 'image');
+			await fs.writeFile(page, '![Before](image/before.png#preview)');
+
+			const imageMoves = await expandImagePathMove(
+				originalImage,
+				movedImage
+			);
+			const plan = await planImageLinkUpdatesForMoves(
+				imageMoves,
+				[],
+				root
+			);
+
+			assert.strictEqual(plan.linksUpdated, 1);
+			assert.strictEqual(plan.updates.length, 1);
+			assert.strictEqual(
+				plan.updates[0].updatedContent,
+				'![Before](image/after.png#preview)'
+			);
+		});
+	});
+
+	test('automatic folder moves coordinate moved documents and their images', async () => {
+		await withTemporaryFolder(async root => {
+			const sourceFolder = path.join(root, 'section');
+			const destinationFolder = path.join(root, 'archive');
+			const page = path.join(sourceFolder, 'page.md');
+			const image = path.join(sourceFolder, 'image', 'diagram.png');
+			await fs.mkdir(path.dirname(image), { recursive: true });
+			await fs.writeFile(page, '![Diagram](image/diagram.png)');
+			await fs.writeFile(image, 'image');
+
+			const [documentMoves, imageMoves] = await Promise.all([
+				expandMarkdownPathMove(sourceFolder, destinationFolder),
+				expandImagePathMove(sourceFolder, destinationFolder)
+			]);
+			const plan = await planImageLinkUpdatesForMoves(
+				imageMoves,
+				documentMoves,
+				root
+			);
+
+			assert.strictEqual(plan.linksUpdated, 0);
+			assert.deepStrictEqual(plan.updates, []);
+		});
 	});
 });
 
