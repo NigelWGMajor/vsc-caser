@@ -1,9 +1,19 @@
 import * as assert from 'assert';
+import { promises as fs } from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 import * as vscode from 'vscode';
 import { buildAnchorDetails } from '../extension';
+import { nestImagesInMarkdown } from '../imageNesting';
+import {
+	formatNestedImageMarkdown,
+	getClipboardImageExtension,
+	normalizeImageTitle,
+	toLowerKebabFileStem
+} from '../nestedImagePaste';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -249,11 +259,251 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(document.getText(), '```ps\nvalue\n```');
 		assert.deepStrictEqual(editor.selection.active, editor.document.lineAt(2).range.end);
 	});
+
+	test('to-NestImages moves a resolving image into the local image folder', async () => {
+		await withTemporaryFolder(async root => {
+			const notes = path.join(root, 'notes');
+			const markdown = path.join(notes, 'readme.md');
+			const sourceImage = path.join(notes, 'diagram.png');
+			await fs.mkdir(notes, { recursive: true });
+			await fs.writeFile(sourceImage, 'image data');
+			await fs.writeFile(markdown, '![Architecture](diagram.png)');
+
+			const result = await nestImagesInMarkdown(markdown, { searchRoot: root });
+
+			assert.strictEqual(await fs.readFile(markdown, 'utf8'), '![Architecture](image/diagram.png)');
+			assert.strictEqual(await fileExists(sourceImage), false);
+			assert.strictEqual(await fs.readFile(path.join(notes, 'image', 'diagram.png'), 'utf8'), 'image data');
+			assert.strictEqual(result.moved, 1);
+			assert.strictEqual(result.broken, 0);
+		});
+	});
+
+	test('to-NestImages repairs an image from any nested image folder', async () => {
+		await withTemporaryFolder(async root => {
+			const notes = path.join(root, 'docs', 'notes');
+			const markdown = path.join(notes, 'readme.md');
+			const discoveredImage = path.join(root, 'assets', 'image', 'diagrams', 'found.png');
+			await fs.mkdir(path.dirname(discoveredImage), { recursive: true });
+			await fs.mkdir(notes, { recursive: true });
+			await fs.writeFile(discoveredImage, 'found');
+			await fs.writeFile(markdown, '![Found](missing/found.png)');
+
+			const result = await nestImagesInMarkdown(markdown, { searchRoot: root });
+
+			assert.strictEqual(
+				await fs.readFile(markdown, 'utf8'),
+				'![Found](../../assets/image/diagrams/found.png)'
+			);
+			assert.strictEqual(result.repaired, 1);
+			assert.strictEqual(result.moved, 0);
+		});
+	});
+
+	test('to-NestImages searches parent folders and then nests a recovered image', async () => {
+		await withTemporaryFolder(async root => {
+			const notes = path.join(root, 'docs', 'notes');
+			const markdown = path.join(notes, 'readme.md');
+			const parentImage = path.join(root, 'lost.png');
+			await fs.mkdir(notes, { recursive: true });
+			await fs.writeFile(parentImage, 'recovered');
+			await fs.writeFile(markdown, '![Recovered](lost.png)');
+
+			const result = await nestImagesInMarkdown(markdown, { searchRoot: root });
+
+			assert.strictEqual(await fs.readFile(markdown, 'utf8'), '![Recovered](image/lost.png)');
+			assert.strictEqual(await fileExists(parentImage), false);
+			assert.strictEqual(await fs.readFile(path.join(notes, 'image', 'lost.png'), 'utf8'), 'recovered');
+			assert.strictEqual(result.moved, 1);
+		});
+	});
+
+	test('to-NestImages marks unresolved images once and leaves remote images alone', async () => {
+		await withTemporaryFolder(async root => {
+			const markdown = path.join(root, 'readme.md');
+			await fs.writeFile(markdown, [
+				'![Missing](nope.png)',
+				'![Empty]()',
+				'![Remote](https://example.test/image.png)'
+			].join('\n'));
+
+			await nestImagesInMarkdown(markdown, { searchRoot: root });
+			await nestImagesInMarkdown(markdown, { searchRoot: root });
+
+			assert.strictEqual(await fs.readFile(markdown, 'utf8'), [
+				'![⛓️‍💥 Missing](nope.png)',
+				'![⛓️‍💥 Empty]()',
+				'![Remote](https://example.test/image.png)'
+			].join('\n'));
+		});
+	});
+
+	test('to-NestImages moves a source only once when references use different spellings', async () => {
+		await withTemporaryFolder(async root => {
+			const markdown = path.join(root, 'readme.md');
+			await fs.writeFile(path.join(root, 'same.png'), 'same');
+			await fs.writeFile(markdown, [
+				'![First](same.png)',
+				'![Second](./same.png?raw=1)'
+			].join('\n'));
+
+			const result = await nestImagesInMarkdown(markdown, { searchRoot: root });
+
+			assert.strictEqual(await fs.readFile(markdown, 'utf8'), [
+				'![First](image/same.png)',
+				'![Second](image/same.png?raw=1)'
+			].join('\n'));
+			assert.strictEqual(result.moved, 1);
+		});
+	});
+
+	test('to-NestImages updates reference-style image definitions', async () => {
+		await withTemporaryFolder(async root => {
+			const markdown = path.join(root, 'readme.md');
+			const sourceImage = path.join(root, 'reference.png');
+			await fs.writeFile(sourceImage, 'reference');
+			await fs.writeFile(markdown, [
+				'![Reference image][diagram]',
+				'',
+				'[diagram]: reference.png "Optional title"'
+			].join('\n'));
+
+			await nestImagesInMarkdown(markdown, { searchRoot: root });
+
+			assert.strictEqual(await fs.readFile(markdown, 'utf8'), [
+				'![Reference image][diagram]',
+				'',
+				'[diagram]: image/reference.png "Optional title"'
+			].join('\n'));
+		});
+	});
+
+	test('to-NestImages handles image syntax in comments, fences, and inline code', async () => {
+		await withTemporaryFolder(async root => {
+			const markdown = path.join(root, 'readme.md');
+			for (const image of ['inline.png', 'fenced.png', 'commented.png', 'live.png']) {
+				await fs.writeFile(path.join(root, image), image);
+			}
+			await fs.writeFile(markdown, [
+				'`![Inline example](inline.png)`',
+				'```markdown',
+				'![Fenced example](fenced.png)',
+				'```',
+				'<!-- ![Historical](commented.png) -->',
+				'![Live](live.png)'
+			].join('\n'));
+
+			await nestImagesInMarkdown(markdown, { searchRoot: root });
+
+			assert.strictEqual(await fs.readFile(markdown, 'utf8'), [
+				'`![Inline example](image/inline.png)`',
+				'```markdown',
+				'![Fenced example](image/fenced.png)',
+				'```',
+				'<!-- ![Historical](image/commented.png) -->',
+				'![Live](image/live.png)'
+			].join('\n'));
+		});
+	});
+
+	test('to-NestImages accepts multiple Explorer selections', async () => {
+		await withTemporaryFolder(async root => {
+			const markdownFiles = [
+				path.join(root, 'first', 'one.md'),
+				path.join(root, 'second', 'two.md')
+			];
+			for (const markdown of markdownFiles) {
+				await fs.mkdir(path.dirname(markdown), { recursive: true });
+				await fs.writeFile(path.join(path.dirname(markdown), 'picture.png'), 'picture');
+				await fs.writeFile(markdown, '![Picture](picture.png)');
+			}
+
+			const uris = markdownFiles.map(file => vscode.Uri.file(file));
+			await vscode.commands.executeCommand('caser.toNestImages', uris[0], uris);
+
+			for (const markdown of markdownFiles) {
+				assert.strictEqual(
+					await fs.readFile(markdown, 'utf8'),
+					'![Picture](image/picture.png)'
+				);
+				assert.strictEqual(
+					await fs.readFile(path.join(path.dirname(markdown), 'image', 'picture.png'), 'utf8'),
+					'picture'
+				);
+			}
+		});
+	});
+
+	test('to-PasteNestedImage delegates ordinary Markdown text paste', async () => {
+		await withTemporaryFolder(async root => {
+			const markdown = path.join(root, 'paste.md');
+			await fs.writeFile(markdown, '');
+			const document = await vscode.workspace.openTextDocument(vscode.Uri.file(markdown));
+			await vscode.window.showTextDocument(document);
+			await vscode.env.clipboard.writeText('pasted text');
+
+			await vscode.commands.executeCommand('caser.toPasteNestedImage');
+			await waitForDocumentText(document, 'pasted text');
+
+			assert.strictEqual(document.getText(), 'pasted text');
+		});
+	});
+
+	test('to-PasteNestedImage configures Markdown clipboard files for the image folder', () => {
+		const destination = vscode.workspace
+			.getConfiguration('markdown')
+			.get<Record<string, string>>('copyFiles.destination');
+
+		assert.deepStrictEqual(destination, {
+			'**/*': '${documentDirName}/image/${fileName}'
+		});
+	});
+
+	test('to-PasteNestedImage derives its title and kebab filename from selected text', () => {
+		const title = normalizeImageTitle('  System\nOverview  ');
+		const fileName = `${toLowerKebabFileStem(title)}${getClipboardImageExtension('image/png', '')}`;
+
+		assert.strictEqual(title, 'System Overview');
+		assert.strictEqual(fileName, 'system-overview.png');
+		assert.strictEqual(
+			formatNestedImageMarkdown(title, fileName),
+			'![System Overview](image/system-overview.png)'
+		);
+	});
+
+	test('to-PasteNestedImage normalizes punctuation and diacritics in generated filenames', () => {
+		assert.strictEqual(
+			toLowerKebabFileStem('Résumé: Q3 Results!'),
+			'resume-q3-results'
+		);
+		assert.strictEqual(
+			formatNestedImageMarkdown('Array [Before]', 'array-before.png'),
+			'![Array \\[Before\\]](image/array-before.png)'
+		);
+	});
 });
 
 async function waitForDocumentText(document: vscode.TextDocument, expected: string): Promise<void> {
 	const timeoutAt = Date.now() + 1000;
 	while (document.getText() !== expected && Date.now() < timeoutAt) {
 		await new Promise(resolve => setTimeout(resolve, 10));
+	}
+}
+
+async function withTemporaryFolder(run: (folder: string) => Promise<void>): Promise<void> {
+	const folder = await fs.mkdtemp(path.join(os.tmpdir(), 'caser-nest-images-'));
+	try {
+		await run(folder);
+	} finally {
+		await fs.rm(folder, { recursive: true, force: true });
+	}
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+	try {
+		await fs.access(filePath);
+		return true;
+	} catch {
+		return false;
 	}
 }

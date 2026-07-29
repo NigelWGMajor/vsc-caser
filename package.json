@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.42.",
-    "version": "1.0.42",
+    "description": "This is the README for extension \"caser\" version 1.0.43.",
+    "version": "1.0.43",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -548,8 +548,38 @@
             {
                 "command": "caser.toDitto",
                 "title": "to-Ditto"
+            },
+            {
+                "command": "caser.toNestImages",
+                "title": "to-NestImages"
+            },
+            {
+                "command": "caser.toPasteNestedImage",
+                "title": "to-PasteNestedImage"
             }
-        ]
+        ],
+        "configurationDefaults": {
+            "markdown.copyFiles.destination": {
+                "**/*": "${documentDirName}/image/${fileName}"
+            }
+        },
+        "keybindings": [
+            {
+                "command": "caser.toPasteNestedImage",
+                "key": "ctrl+v",
+                "mac": "cmd+v",
+                "when": "editorTextFocus && editorLangId == markdown && !editorReadonly"
+            }
+        ],
+        "menus": {
+            "explorer/context": [
+                {
+                    "command": "caser.toNestImages",
+                    "when": "resourceExtname == .md",
+                    "group": "navigation@10"
+                }
+            ]
+        }
     },
     "scripts": {
         "xcompile": "npm run check-types && node esbuild.js",

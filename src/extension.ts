@@ -4,6 +4,14 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto-js';
 import * as path from 'path';
+import { nestImagesInMarkdown, NestImagesResult } from './imageNesting';
+import {
+    formatNestedImageMarkdown,
+    getClipboardImageExtension,
+    getFallbackImageTitle,
+    normalizeImageTitle,
+    toLowerKebabFileStem
+} from './nestedImagePaste';
 const math = require('mathjs');
 import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
@@ -212,6 +220,9 @@ export function activate(context: vscode.ExtensionContext) {
     let pendingAnchorLink: ReturnType<typeof buildAnchorDetails> | undefined;
     const anchorPasteKind = vscode.DocumentDropOrPasteEditKind.Empty
         .append('markdown', 'link', 'caserAnchor');
+    const nestedImagePasteKind = vscode.DocumentDropOrPasteEditKind.Empty
+        .append('markdown', 'image', 'caserNested');
+    let nestedImagePasteEditsProvided = 0;
 
     context.subscriptions.push(vscode.languages.registerDocumentPasteEditProvider(
         [{ scheme: 'file' }, { scheme: 'untitled' }],
@@ -246,6 +257,70 @@ export function activate(context: vscode.ExtensionContext) {
         {
             providedPasteEditKinds: [anchorPasteKind],
             pasteMimeTypes: ['text/plain']
+        }
+    ));
+    context.subscriptions.push(vscode.languages.registerDocumentPasteEditProvider(
+        { language: 'markdown', scheme: 'file' },
+        {
+            async provideDocumentPasteEdits(document, ranges, dataTransfer, _pasteContext, token) {
+                let clipboardImage:
+                    { mimeType: string; file: vscode.DataTransferFile; extension: string }
+                    | undefined;
+
+                for (const [mimeType, item] of dataTransfer) {
+                    if (token.isCancellationRequested) {
+                        return;
+                    }
+                    const file = item.asFile();
+                    if (!file) {
+                        continue;
+                    }
+                    const extension = getClipboardImageExtension(mimeType, file.name);
+                    if (extension) {
+                        clipboardImage = { mimeType, file, extension };
+                        break;
+                    }
+                }
+
+                if (!clipboardImage || ranges.length === 0) {
+                    return;
+                }
+
+                const selectedTitle = normalizeImageTitle(document.getText(ranges[0]));
+                const title = selectedTitle || getFallbackImageTitle(clipboardImage.file.name);
+                const kebabStem = toLowerKebabFileStem(title) || 'image';
+                const imageDirectory = vscode.Uri.joinPath(document.uri, '..', 'image');
+                await vscode.workspace.fs.createDirectory(imageDirectory);
+
+                let suffix = 1;
+                let fileName = `${kebabStem}${clipboardImage.extension}`;
+                let imageUri = vscode.Uri.joinPath(imageDirectory, fileName);
+                while (await uriExists(imageUri)) {
+                    suffix++;
+                    fileName = `${kebabStem}-${suffix}${clipboardImage.extension}`;
+                    imageUri = vscode.Uri.joinPath(imageDirectory, fileName);
+                }
+
+                if (token.isCancellationRequested) {
+                    return;
+                }
+
+                const imageData = await clipboardImage.file.data();
+                const additionalEdit = new vscode.WorkspaceEdit();
+                additionalEdit.createFile(imageUri, { contents: imageData });
+                const pasteEdit = new vscode.DocumentPasteEdit(
+                    formatNestedImageMarkdown(title, fileName),
+                    'Paste image into the nested image folder',
+                    nestedImagePasteKind
+                );
+                pasteEdit.additionalEdit = additionalEdit;
+                nestedImagePasteEditsProvided++;
+                return [pasteEdit];
+            }
+        },
+        {
+            providedPasteEditKinds: [nestedImagePasteKind],
+            pasteMimeTypes: ['image/*', 'files']
         }
     ));
 
@@ -3383,6 +3458,95 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
+    const toNestImages = vscode.commands.registerCommand(
+        'caser.toNestImages',
+        async (clickedUri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+            const activeDocument = vscode.window.activeTextEditor?.document;
+            const requestedUris = selectedUris?.length
+                ? selectedUris
+                : clickedUri
+                    ? [clickedUri]
+                    : activeDocument
+                        ? [activeDocument.uri]
+                        : [];
+            const markdownUris = [...new Map(
+                requestedUris
+                    .filter(uri => uri.scheme === 'file' && path.extname(uri.fsPath).toLocaleLowerCase() === '.md')
+                    .map(uri => [uri.fsPath.toLocaleLowerCase(), uri])
+            ).values()];
+
+            if (markdownUris.length === 0) {
+                vscode.window.showErrorMessage('Select one or more Markdown files to nest their images.');
+                return;
+            }
+
+            const results: NestImagesResult[] = [];
+            const failures: string[] = [];
+            await vscode.window.withProgress(
+                {
+                    location: vscode.ProgressLocation.Notification,
+                    title: 'Nesting Markdown images',
+                    cancellable: false
+                },
+                async progress => {
+                    for (let index = 0; index < markdownUris.length; index++) {
+                        const uri = markdownUris[index];
+                        progress.report({
+                            message: `${path.basename(uri.fsPath)} (${index + 1}/${markdownUris.length})`
+                        });
+                        try {
+                            const openDocument = vscode.workspace.textDocuments.find(
+                                document => document.uri.toString() === uri.toString()
+                            );
+                            if (openDocument?.isDirty && !await openDocument.save()) {
+                                throw new Error(`Could not save ${uri.fsPath} before nesting its images.`);
+                            }
+                            const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+                            results.push(await nestImagesInMarkdown(uri.fsPath, {
+                                searchRoot: workspaceFolder?.uri.fsPath ?? path.dirname(uri.fsPath)
+                            }));
+                        } catch (error) {
+                            const message = error instanceof Error ? error.message : String(error);
+                            failures.push(`${path.basename(uri.fsPath)}: ${message}`);
+                        }
+                    }
+                }
+            );
+
+            const totals = results.reduce(
+                (sum, item) => ({
+                    references: sum.references + item.references,
+                    moved: sum.moved + item.moved,
+                    repaired: sum.repaired + item.repaired,
+                    broken: sum.broken + item.broken
+                }),
+                { references: 0, moved: 0, repaired: 0, broken: 0 }
+            );
+            const summary =
+                `to-NestImages scanned ${markdownUris.length} file(s): `
+                + `${totals.references} image(s), ${totals.moved} moved, `
+                + `${totals.repaired} repaired, ${totals.broken} broken.`;
+            if (failures.length > 0) {
+                vscode.window.showWarningMessage(
+                    `${summary} ${failures.length} file(s) failed: ${failures.join('; ')}`
+                );
+            } else {
+                vscode.window.showInformationMessage(summary);
+            }
+        }
+    );
+    const toPasteNestedImage = vscode.commands.registerCommand(
+        'caser.toPasteNestedImage',
+        async () => {
+            const editsProvidedBeforePaste = nestedImagePasteEditsProvided;
+            await vscode.commands.executeCommand('editor.action.pasteAs', {
+                kind: nestedImagePasteKind.value
+            });
+            if (nestedImagePasteEditsProvided === editsProvidedBeforePaste) {
+                await vscode.commands.executeCommand('editor.action.clipboardPasteAction');
+            }
+        }
+    );
     context.subscriptions.push(toCamelCase);
     context.subscriptions.push(toKebabCase);
     context.subscriptions.push(toSnakeCase);
@@ -3460,7 +3624,18 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toBash);
     context.subscriptions.push(toPowershell);
     context.subscriptions.push(triageNextRowAsFileName);
+    context.subscriptions.push(toNestImages);
+    context.subscriptions.push(toPasteNestedImage);
 
+}
+
+async function uriExists(uri: vscode.Uri): Promise<boolean> {
+    try {
+        await vscode.workspace.fs.stat(uri);
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 // This method is called when your extension is deactivated
