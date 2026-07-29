@@ -12,6 +12,11 @@ import {
     normalizeImageTitle,
     toLowerKebabFileStem
 } from './nestedImagePaste';
+import {
+    findDocumentsReferencingImages,
+    formatWhereUsedMessage,
+    isImageFilePath
+} from './whereUsedLocally';
 const math = require('mathjs');
 import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
@@ -3547,6 +3552,97 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     );
+    const toWhereUsedLocally = vscode.commands.registerCommand(
+        'caser.toWhereUsedLocally',
+        async (clickedUri?: vscode.Uri, selectedUris?: vscode.Uri[]) => {
+            const requestedUris = selectedUris?.length
+                ? selectedUris
+                : clickedUri
+                    ? [clickedUri]
+                    : [];
+            const imageUris = [...new Map(requestedUris
+                .filter(uri => uri.scheme === 'file' && isImageFilePath(uri.fsPath))
+                .map(uri => [normalizeExplorerPath(uri.fsPath), uri])
+            ).values()];
+            if (imageUris.length === 0) {
+                vscode.window.showErrorMessage(
+                    'Select one or more image files to find where they are used locally.'
+                );
+                return;
+            }
+
+            const workspaceGroups = new Map<string, {
+                workspaceFolder: vscode.WorkspaceFolder;
+                imageUris: vscode.Uri[];
+            }>();
+            for (const imageUri of imageUris) {
+                const workspaceFolder = vscode.workspace.getWorkspaceFolder(imageUri);
+                if (!workspaceFolder) {
+                    continue;
+                }
+                const key = normalizeExplorerPath(workspaceFolder.uri.fsPath);
+                const group = workspaceGroups.get(key);
+                if (group) {
+                    group.imageUris.push(imageUri);
+                } else {
+                    workspaceGroups.set(key, { workspaceFolder, imageUris: [imageUri] });
+                }
+            }
+            if (workspaceGroups.size === 0) {
+                vscode.window.showErrorMessage(
+                    'The selected images must be inside the current workspace.'
+                );
+                return;
+            }
+
+            const matchesByWorkspace = await Promise.all([...workspaceGroups.values()].map(
+                async group => ({
+                    group,
+                    matchingPaths: await findDocumentsReferencingImages(
+                        group.imageUris.map(uri => uri.fsPath),
+                        group.workspaceFolder.uri.fsPath
+                    )
+                })
+            ));
+            const matchingPaths = [...new Map(matchesByWorkspace.flatMap(({ matchingPaths }) =>
+                matchingPaths.map(matchingPath =>
+                    [normalizeExplorerPath(matchingPath), matchingPath] as const
+                )
+            )).values()];
+            const selectionResult = await selectExplorerPaths(matchingPaths);
+
+            if (matchingPaths.length === 0) {
+                const subject = imageUris.length === 1
+                    ? path.basename(imageUris[0].fsPath)
+                    : `${imageUris.length} selected images`;
+                vscode.window.showInformationMessage(
+                    `No local documents reference ${subject}.`
+                );
+                return;
+            }
+
+            if (matchesByWorkspace.length === 1) {
+                const { group } = matchesByWorkspace[0];
+                vscode.window.showInformationMessage(formatWhereUsedMessage(
+                    group.imageUris.map(uri => uri.fsPath),
+                    matchingPaths,
+                    group.workspaceFolder.uri.fsPath
+                ));
+            } else {
+                const noun = matchingPaths.length === 1 ? 'Markdown file' : 'Markdown files';
+                vscode.window.showInformationMessage(
+                    `${imageUris.length} images are used by ${matchingPaths.length} ${noun}.`
+                );
+            }
+
+            if (selectionResult.unselectedPaths.length > 0) {
+                vscode.window.showWarningMessage(
+                    `Selected ${selectionResult.selectedPaths.length} of `
+                    + `${matchingPaths.length} Markdown file(s) in the Explorer.`
+                );
+            }
+        }
+    );
     context.subscriptions.push(toCamelCase);
     context.subscriptions.push(toKebabCase);
     context.subscriptions.push(toSnakeCase);
@@ -3626,7 +3722,97 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(triageNextRowAsFileName);
     context.subscriptions.push(toNestImages);
     context.subscriptions.push(toPasteNestedImage);
+    context.subscriptions.push(toWhereUsedLocally);
 
+}
+
+type ExplorerSelectionResult = {
+    selectedPaths: string[];
+    unselectedPaths: string[];
+};
+
+async function selectExplorerPaths(filePaths: readonly string[]): Promise<ExplorerSelectionResult> {
+    const targetPaths = new Map(filePaths.map(filePath =>
+        [normalizeExplorerPath(filePath), filePath] as const
+    ));
+
+    await vscode.commands.executeCommand('workbench.files.action.focusFilesExplorer');
+    await vscode.commands.executeCommand('list.clear');
+    await vscode.commands.executeCommand('list.clear');
+
+    if (targetPaths.size === 0) {
+        return { selectedPaths: [], unselectedPaths: [] };
+    }
+
+    for (const filePath of targetPaths.values()) {
+        await vscode.commands.executeCommand('revealInExplorer', vscode.Uri.file(filePath));
+    }
+
+    if (targetPaths.size === 1) {
+        return {
+            selectedPaths: [...targetPaths.values()],
+            unselectedPaths: []
+        };
+    }
+
+    await vscode.commands.executeCommand('workbench.files.action.focusFilesExplorer');
+    await vscode.commands.executeCommand('list.clear');
+    await vscode.commands.executeCommand('list.clear');
+
+    const originalClipboardText = await vscode.env.clipboard.readText();
+    const targetIndexes = new Map<number, string>();
+    try {
+        await vscode.commands.executeCommand('list.focusLast');
+        const lastVisiblePath = await copyFocusedExplorerPath();
+        await vscode.commands.executeCommand('list.focusFirst');
+
+        for (let index = 0; index < 100_000; index++) {
+            const focusedPath = await copyFocusedExplorerPath();
+            const normalizedFocusedPath = normalizeExplorerPath(focusedPath);
+            const targetPath = targetPaths.get(normalizedFocusedPath);
+            if (targetPath) {
+                targetIndexes.set(index, targetPath);
+            }
+            if (normalizedFocusedPath === normalizeExplorerPath(lastVisiblePath)) {
+                break;
+            }
+            await vscode.commands.executeCommand('list.focusDown');
+        }
+    } finally {
+        await vscode.env.clipboard.writeText(originalClipboardText);
+    }
+
+    if (targetIndexes.size > 0) {
+        const lastTargetIndex = Math.max(...targetIndexes.keys());
+        await vscode.commands.executeCommand('list.focusFirst');
+        for (let index = 0; index <= lastTargetIndex; index++) {
+            if (targetIndexes.has(index)) {
+                await vscode.commands.executeCommand('list.toggleSelection');
+            }
+            if (index < lastTargetIndex) {
+                await vscode.commands.executeCommand('list.focusDown');
+            }
+        }
+    }
+
+    const selectedPaths = [...targetIndexes.values()];
+    const selectedKeys = new Set(selectedPaths.map(normalizeExplorerPath));
+    return {
+        selectedPaths,
+        unselectedPaths: [...targetPaths.entries()]
+            .filter(([key]) => !selectedKeys.has(key))
+            .map(([, filePath]) => filePath)
+    };
+}
+
+async function copyFocusedExplorerPath(): Promise<string> {
+    await vscode.commands.executeCommand('copyFilePath');
+    return vscode.env.clipboard.readText();
+}
+
+function normalizeExplorerPath(filePath: string): string {
+    const normalized = path.resolve(filePath);
+    return process.platform === 'win32' ? normalized.toLocaleLowerCase() : normalized;
 }
 
 async function uriExists(uri: vscode.Uri): Promise<boolean> {

@@ -17,6 +17,26 @@ export interface NestImagesResult {
     unchanged: number;
 }
 
+export function markdownReferencesImage(
+    content: string,
+    markdownPath: string,
+    imagePath: string
+): boolean {
+    const markdownDirectory = path.dirname(path.resolve(markdownPath));
+    const absoluteImagePath = path.resolve(imagePath);
+
+    return findMarkdownImageOccurrences(content).some(occurrence => {
+        const parsedDestination = parseLocalDestination(occurrence.destination);
+        if (!parsedDestination) {
+            return false;
+        }
+        const resolvedPath = path.isAbsolute(parsedDestination.filePath)
+            ? path.normalize(parsedDestination.filePath)
+            : path.resolve(markdownDirectory, parsedDestination.filePath);
+        return samePath(resolvedPath, absoluteImagePath);
+    });
+}
+
 interface ImageOccurrence {
     altStart: number;
     altEnd: number;

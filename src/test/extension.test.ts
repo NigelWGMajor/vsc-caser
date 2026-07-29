@@ -14,6 +14,12 @@ import {
 	normalizeImageTitle,
 	toLowerKebabFileStem
 } from '../nestedImagePaste';
+import {
+    findDocumentsReferencingImage,
+    findDocumentsReferencingImages,
+    formatWhereUsedMessage,
+    isImageFilePath
+} from '../whereUsedLocally';
 
 suite('Extension Test Suite', () => {
 	vscode.window.showInformationMessage('Start all tests.');
@@ -479,6 +485,95 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(
 			formatNestedImageMarkdown('Array [Before]', 'array-before.png'),
 			'![Array \\[Before\\]](image/array-before.png)'
+		);
+	});
+
+	test('to-WhereUsedLocally finds references in the image folder and its ancestors', async () => {
+		await withTemporaryFolder(async root => {
+			const notes = path.join(root, 'notes');
+			const imageFolder = path.join(notes, 'image');
+			const childFolder = path.join(notes, 'child');
+			const image = path.join(imageFolder, 'system overview.png');
+			await fs.mkdir(imageFolder, { recursive: true });
+			await fs.mkdir(childFolder, { recursive: true });
+			await fs.writeFile(image, 'image');
+
+			const sameFolder = path.join(imageFolder, 'details.md');
+			const parentFolder = path.join(notes, 'page.md');
+			const rootFolder = path.join(root, 'index.md');
+			await fs.writeFile(sameFolder, '![Details](<system overview.png>)');
+			await fs.writeFile(parentFolder, '![Overview](image/system%20overview.png#preview)');
+			await fs.writeFile(rootFolder, '![Overview][diagram]\n\n[diagram]: notes/image/system%20overview.png');
+			await fs.writeFile(
+				path.join(childFolder, 'excluded.md'),
+				'![Overview](../image/system%20overview.png)'
+			);
+			await fs.writeFile(path.join(notes, 'unrelated.md'), 'system overview.png');
+
+			assert.deepStrictEqual(
+				await findDocumentsReferencingImage(image, root),
+				[sameFolder, parentFolder, rootFolder]
+			);
+		});
+	});
+
+	test('to-WhereUsedLocally recognizes supported image file extensions', () => {
+		assert.strictEqual(isImageFilePath('diagram.PNG'), true);
+		assert.strictEqual(isImageFilePath('diagram.svg'), true);
+		assert.strictEqual(isImageFilePath('notes.md'), false);
+	});
+
+	test('to-WhereUsedLocally combines references from multiple selected images', async () => {
+		await withTemporaryFolder(async root => {
+			const imageFolder = path.join(root, 'image');
+			const firstImage = path.join(imageFolder, 'first.png');
+			const secondImage = path.join(imageFolder, 'second.png');
+			await fs.mkdir(imageFolder, { recursive: true });
+			await fs.writeFile(firstImage, 'first image');
+			await fs.writeFile(secondImage, 'second image');
+
+			const firstOnly = path.join(root, 'first.md');
+			const bothImages = path.join(root, 'both.md');
+			const secondOnly = path.join(root, 'second.md');
+			await fs.writeFile(firstOnly, '![First](image/first.png)');
+			await fs.writeFile(
+				bothImages,
+				'![First](image/first.png)\n![Second](image/second.png)'
+			);
+			await fs.writeFile(secondOnly, '![Second](image/second.png)');
+
+			assert.deepStrictEqual(
+				await findDocumentsReferencingImages([firstImage, secondImage], root),
+				[bothImages, firstOnly, secondOnly]
+			);
+		});
+	});
+
+	test('to-WhereUsedLocally reports workspace-relative Markdown paths', () => {
+		const workspaceRoot = path.join('workspace', 'root');
+		const image = path.join(workspaceRoot, 'notes', 'image', 'diagram.png');
+		const matchingPaths = [
+			path.join(workspaceRoot, 'notes', 'page.md'),
+			path.join(workspaceRoot, 'index.md')
+		];
+
+		assert.strictEqual(
+			formatWhereUsedMessage(image, matchingPaths, workspaceRoot),
+			'diagram.png is used by 2 Markdown files: notes/page.md, index.md'
+		);
+	});
+
+	test('to-WhereUsedLocally reports multiple selected images', () => {
+		const workspaceRoot = path.join('workspace', 'root');
+		const images = [
+			path.join(workspaceRoot, 'image', 'first.png'),
+			path.join(workspaceRoot, 'image', 'second.png')
+		];
+		const matchingPaths = [path.join(workspaceRoot, 'page.md')];
+
+		assert.strictEqual(
+			formatWhereUsedMessage(images, matchingPaths, workspaceRoot),
+			'2 images are used by 1 Markdown file: page.md'
 		);
 	});
 });

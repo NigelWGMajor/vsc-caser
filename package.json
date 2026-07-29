@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.43.",
-    "version": "1.0.43",
+    "description": "This is the README for extension \"caser\" version 1.0.44.",
+    "version": "1.0.44",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -556,6 +556,10 @@
             {
                 "command": "caser.toPasteNestedImage",
                 "title": "to-PasteNestedImage"
+            },
+            {
+                "command": "caser.toWhereUsedLocally",
+                "title": "to-WhereUsedLocally"
             }
         ],
         "configurationDefaults": {
@@ -576,6 +580,11 @@
                 {
                     "command": "caser.toNestImages",
                     "when": "resourceExtname == .md",
+                    "group": "navigation@10"
+                },
+                {
+                    "command": "caser.toWhereUsedLocally",
+                    "when": "resourceExtname =~ /\\.(avif|bmp|gif|heic|heif|ico|jpe?g|png|svg|tiff?|webp)$/i",
                     "group": "navigation@10"
                 }
             ]
