@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.39.",
-    "version": "1.0.39",
+    "description": "This is the README for extension \"caser\" version 1.0.42.",
+    "version": "1.0.42",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -571,12 +571,12 @@
         "@types/crypto-js": "^4.2.2",
         "@types/mocha": "^10.0.7",
         "@types/node": "20.x",
-        "@typescript-eslint/eslint-plugin": "^7.14.1",
-        "@typescript-eslint/parser": "^7.11.0",
-        "@vscode/test-cli": "^0.0.9",
+        "@typescript-eslint/eslint-plugin": "^8.65.0",
+        "@typescript-eslint/parser": "^8.65.0",
+        "@vscode/test-cli": "^0.0.15",
         "@vscode/test-electron": "^2.4.0",
-        "eslint": "^8.57.0",
-        "npm-run-all": "^4.1.5",
+        "eslint": "^10.8.0",
+        "npm-run-all2": "~8.0.4",
         "ts-loader": "^9.5.4",
         "typescript": "^5.4.5",
         "webpack": "^5.105.4",
@@ -592,12 +592,17 @@
         "@types/vscode": "^1.125.0",
         "@vscode/vsce": "^3.9.2",
         "crypto-js": "^4.2.0",
-        "linkify-it": "^5.0.1",
+        "linkify-it": "~5.0.2",
         "mathjs": "^15.2.0"
     },
     "overrides": {
         "xml2js": "^0.6.2",
         "serialize-javascript": "^7.0.5",
-        "fast-uri": "3.1.2"
+        "fast-uri": "~3.1.4",
+        "mocha": {
+            "diff": "8.0.3",
+            "glob": "13.0.6",
+            "minimatch": "10.2.6"
+        }
     }
 }

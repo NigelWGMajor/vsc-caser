@@ -24,10 +24,12 @@ type MarkedLinkMatch = {
 export function buildAnchorDetails(relativeFilePath: string, zeroBasedLine: number) {
     const anchorId = `ref-${zeroBasedLine + 1}`;
     const normalizedPath = relativeFilePath.replace(/\\/g, '/').replace(/^\.\/+/, '');
+    const linkTarget = `./${normalizedPath}#${anchorId}`;
+    const formattedLinkTarget = normalizedPath.includes(' ') ? `<${linkTarget}>` : linkTarget;
     return {
         anchorId,
         anchor: `<a id="${anchorId}"></a>`,
-        bookmarkLink: `[${anchorId}](./${normalizedPath}#${anchorId})`
+        bookmarkLink: `[${anchorId}](${formattedLinkTarget})`
     };
 }
 
@@ -207,6 +209,45 @@ export function activate(context: vscode.ExtensionContext) {
         .get<boolean>('dimActive', true);
     const bucketFolders = new BucketFolderService(context);
     let toFilePath: string | undefined;
+    let pendingAnchorLink: ReturnType<typeof buildAnchorDetails> | undefined;
+    const anchorPasteKind = vscode.DocumentDropOrPasteEditKind.Empty
+        .append('markdown', 'link', 'caserAnchor');
+
+    context.subscriptions.push(vscode.languages.registerDocumentPasteEditProvider(
+        [{ scheme: 'file' }, { scheme: 'untitled' }],
+        {
+            async provideDocumentPasteEdits(_document, _ranges, dataTransfer) {
+                const anchorDetails = pendingAnchorLink;
+                const clipboardItem = dataTransfer.get('text/plain');
+                if (!anchorDetails || !clipboardItem) {
+                    return;
+                }
+
+                const clipboardText = await clipboardItem.asString();
+                if (clipboardText !== anchorDetails.bookmarkLink) {
+                    return;
+                }
+
+                const title = `[${anchorDetails.anchorId}]`;
+                const snippet = new vscode.SnippetString()
+                    .appendText('[')
+                    .appendPlaceholder(anchorDetails.anchorId)
+                    .appendText(']' + anchorDetails.bookmarkLink.substring(title.length));
+                pendingAnchorLink = undefined;
+                return [
+                    new vscode.DocumentPasteEdit(
+                        snippet,
+                        'Paste Caser anchor link',
+                        anchorPasteKind
+                    )
+                ];
+            }
+        },
+        {
+            providedPasteEditKinds: [anchorPasteKind],
+            pasteMimeTypes: ['text/plain']
+        }
+    ));
 
     // Use the console to output diagnostic information (console.log) and errors (console.error)
     // This line of code will only be executed once when your extension is activated
@@ -748,8 +789,10 @@ export function activate(context: vscode.ExtensionContext) {
             // const regex = /(?:^[ \t]*|\d+\.{1}|\s)*(?:[#]+|[>]{1}|[*]{1}|[-]{1}|[+]{1}|(?:\d+\.{1}){0,1}[\t ]+)* (.*$)/;
             const regex = /(?:^[ \t]*|\d+\.{1}|\s)*(?:[#]+|[>]{1}|[*]{1}|[-]{1}|[+]{1}|(?:\d+\.{1}){0,1}[\t ]+|<!--)* (.*$)/;
             const match = lineText.match(regex);
-            // we have an edge condition where the line starts with a symbol followed by a space.
-            if (match && (match.input?.length ?? 0) - match[0]?.length > 1) {
+            // A match beginning after column zero found whitespace inside the content,
+            // not a structural Markdown prefix. Keep the entire line so its leading
+            // marker can be detected and replaced.
+            if (match && (match.index ?? 0) > 0) {
                 // return the entire line
                 return new vscode.Selection(lineRange.start, lineRange.end);
             }
@@ -781,29 +824,56 @@ export function activate(context: vscode.ExtensionContext) {
         fromSet: string[],
         removeSet: string[]
     ): string {
-        var newText = text;
-        let didReplace = false;
-        for (const symbol of fromSet) {
-            // If the text starts with the symbol, replace it
-            if (newText.startsWith(symbol)) {
-                let ix = (fromSet.indexOf(symbol) + 1) % fromSet.length;
-                for (const removeSymbol of removeSet) {
-                    if (removeSymbol !== symbol) {
-                        newText = newText.replace(removeSymbol, '');
-                    }
+        if (fromSet.length === 0) {
+            return text;
+        }
+
+        const normalizeSymbol = (symbol: string) =>
+            symbol.replace(/\uFE0F/g, '').trim();
+        const matchLeadingSymbol = (value: string) => {
+            let bestMatch: { symbol: string; length: number } | undefined;
+
+            for (const symbol of removeSet) {
+                const normalized = normalizeSymbol(symbol);
+                if (!normalized) {
+                    continue;
                 }
-                newText = newText.replace(symbol, fromSet[ix]);
-                didReplace = true;
-                break; // Exit the loop once a match is found
+
+                const pattern = [...normalized]
+                    .map(character => escapeRegExp(character) + '\uFE0F?')
+                    .join('');
+                const match = value.match(new RegExp(`^${pattern}`));
+                if (match && (!bestMatch || match[0].length > bestMatch.length)) {
+                    bestMatch = { symbol, length: match[0].length };
+                }
             }
-        }
-        if (!didReplace) {
-            for (const removeSymbol of removeSet) {
-                newText = newText.replace(removeSymbol, '');
+
+            return bestMatch;
+        };
+
+        let remainingText = text;
+        let initialSymbol: string | undefined;
+        while (true) {
+            remainingText = remainingText.trimStart();
+            const match = matchLeadingSymbol(remainingText);
+            if (!match) {
+                break;
             }
-            newText = fromSet[0] + ' ' + newText;
+            initialSymbol ??= match.symbol;
+            remainingText = remainingText.slice(match.length);
         }
-        return newText;
+
+        const currentIndex = initialSymbol
+            ? fromSet.findIndex(symbol =>
+                normalizeSymbol(symbol) === normalizeSymbol(initialSymbol))
+            : -1;
+        const nextSymbol = currentIndex >= 0
+            ? fromSet[(currentIndex + 1) % fromSet.length]
+            : fromSet[0];
+
+        return remainingText.length > 0
+            ? `${nextSymbol} ${remainingText}`
+            : `${nextSymbol} `;
     }
     function atStartSpaced(
         editor: vscode.TextEditor,
@@ -2751,6 +2821,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         await vscode.env.clipboard.writeText(anchorDetails.bookmarkLink);
+        pendingAnchorLink = anchorDetails;
 
         const targetPosition = new vscode.Position(targetLineIndex + 1, targetCharacter);
         editor.selection = new vscode.Selection(targetPosition, targetPosition);

@@ -103,6 +103,29 @@ suite('Extension Test Suite', () => {
 		}
 	});
 
+	test('markQuery cleans duplicate prefixes without altering symbols in the content', async () => {
+		const cases = [
+			{ input: '❓ ❓ investigate', expected: '⁉️ investigate' },
+			{ input: '⁉ investigate', expected: '❌ investigate' },
+			{ input: 'plain ❓ content', expected: '❓ plain ❓ content' },
+			{ input: '💭 ❓ mixed markers', expected: '❓ mixed markers' }
+		];
+
+		for (const testCase of cases) {
+			const document = await vscode.workspace.openTextDocument({
+				content: testCase.input,
+				language: 'markdown'
+			});
+			const editor = await vscode.window.showTextDocument(document);
+			const cursor = document.lineAt(0).range.start;
+			editor.selection = new vscode.Selection(cursor, cursor);
+
+			await vscode.commands.executeCommand('caser.markQuery');
+
+			assert.strictEqual(document.getText(), testCase.expected);
+		}
+	});
+
 	test('toNextEnd moves to the current line end, then the next line end', async () => {
 		const document = await vscode.workspace.openTextDocument({ content: 'first\nsecond line' });
 		const editor = await vscode.window.showTextDocument(document);
@@ -133,6 +156,17 @@ suite('Extension Test Suite', () => {
 				anchorId: 'ref-12',
 				anchor: '<a id="ref-12"></a>',
 				bookmarkLink: '[ref-12](./notes/example.md#ref-12)'
+			}
+		);
+	});
+
+	test('toAnchor wraps a bookmark target containing spaces in angle brackets', () => {
+		assert.deepStrictEqual(
+			buildAnchorDetails('project notes\\daily log.md', 4),
+			{
+				anchorId: 'ref-5',
+				anchor: '<a id="ref-5"></a>',
+				bookmarkLink: '[ref-5](<./project notes/daily log.md#ref-5>)'
 			}
 		);
 	});
