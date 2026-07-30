@@ -441,6 +441,18 @@
                 "title": "to-NextEnd"
             },
             {
+                "command": "caser.toTimestamp",
+                "title": "to-Timestamp"
+            },
+            {
+                "command": "caser.toStartOrEnd",
+                "title": "to-StartOrEnd"
+            },
+            {
+                "command": "caser.toSelectEnclosure",
+                "title": "to-SelectEnclosure"
+            },
+            {
                 "command": "caser.toFence",
                 "title": "to-Fence"
             },

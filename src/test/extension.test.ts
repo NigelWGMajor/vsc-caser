@@ -6,7 +6,7 @@ import * as path from 'path';
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 import * as vscode from 'vscode';
-import { buildAnchorDetails } from '../extension';
+import { buildAnchorDetails, formatTimestamp } from '../extension';
 import {
 	expandImagePathMove,
 	nestImagesInMarkdown,
@@ -24,6 +24,7 @@ import {
 	unwrapMarkdownTableColumns,
 	wrapMarkdownTableColumns
 } from '../selectionTransforms';
+import { findEnclosures } from '../enclosures';
 import {
     findDocumentsReferencingImage,
     findDocumentsReferencingImages,
@@ -420,6 +421,148 @@ suite('Extension Test Suite', () => {
 
 		await vscode.commands.executeCommand('caser.toNextEnd');
 		assert.deepStrictEqual(editor.selection.active, lineEnd);
+	});
+
+	test('formatTimestamp uses a zero-padded 24-hour time', () => {
+		assert.strictEqual(
+			formatTimestamp(new Date(2026, 0, 2, 3, 4, 5)),
+			'⏱️ 03:04:05'
+		);
+	});
+
+	test('toTimestamp creates a timestamp line and moves to the next empty line', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: '' });
+		const editor = await vscode.window.showTextDocument(document);
+		const cursor = new vscode.Position(0, 0);
+		editor.selection = new vscode.Selection(cursor, cursor);
+
+		await vscode.commands.executeCommand('caser.toTimestamp');
+
+		assert.match(document.getText(), /^⏱️ \d{2}:\d{2}:\d{2}\r?\n$/);
+		assert.deepStrictEqual(editor.selection.active, new vscode.Position(1, 0));
+	});
+
+	test('toTimestamp inserts a spaced bracketed timestamp inline', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: 'alphabeta' });
+		const editor = await vscode.window.showTextDocument(document);
+		const cursor = new vscode.Position(0, 5);
+		editor.selection = new vscode.Selection(cursor, cursor);
+
+		await vscode.commands.executeCommand('caser.toTimestamp');
+
+		const match = document.getText().match(/^alpha( \[⏱️ \d{2}:\d{2}:\d{2}\] )beta$/);
+		assert.ok(match);
+		assert.deepStrictEqual(
+			editor.selection.active,
+			new vscode.Position(0, cursor.character + match[1].length)
+		);
+	});
+
+	test('toStartOrEnd toggles across nested code without stopping in strings or comments', async () => {
+		const content = 'function example() { return call(")") /* } */; }';
+		const document = await vscode.workspace.openTextDocument({
+			content,
+			language: 'typescript'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		const openingOffset = content.indexOf('{');
+		const closingOffset = content.lastIndexOf('}');
+		const opening = document.positionAt(openingOffset);
+		editor.selection = new vscode.Selection(opening, opening);
+
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+		assert.deepStrictEqual(editor.selection.active, document.positionAt(closingOffset));
+
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+		assert.deepStrictEqual(editor.selection.active, opening);
+	});
+
+	test('toSelectEnclosure selects an inner enclosure and expands through its parents', async () => {
+		const content = 'call(one, [two, {three: "four, five"}])';
+		const document = await vscode.workspace.openTextDocument({
+			content,
+			language: 'typescript'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		const cursor = document.positionAt(content.indexOf('three') + 2);
+		editor.selection = new vscode.Selection(cursor, cursor);
+
+		await vscode.commands.executeCommand('caser.toSelectEnclosure');
+		assert.strictEqual(document.getText(editor.selection), '{three: "four, five"}');
+
+		await vscode.commands.executeCommand('caser.toSelectEnclosure');
+		assert.strictEqual(document.getText(editor.selection), '[two, {three: "four, five"}]');
+
+		await vscode.commands.executeCommand('caser.toSelectEnclosure');
+		assert.strictEqual(
+			document.getText(editor.selection),
+			'(one, [two, {three: "four, five"}])'
+		);
+	});
+
+	test('toSelectEnclosure treats escaped CSV quotes as part of one quoted field', async () => {
+		const content = '1,"alpha, ""quoted"", (literal)",3';
+		const document = await vscode.workspace.openTextDocument({
+			content,
+			language: 'csv'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		const cursor = document.positionAt(content.indexOf('alpha') + 2);
+		editor.selection = new vscode.Selection(cursor, cursor);
+
+		await vscode.commands.executeCommand('caser.toSelectEnclosure');
+
+		assert.strictEqual(
+			document.getText(editor.selection),
+			'"alpha, ""quoted"", (literal)"'
+		);
+	});
+
+	test('toSelectEnclosure expands from fenced JSON to the Markdown fence', async () => {
+		const content = [
+			'```json',
+			'{"items": [1, {"value": 2}]}',
+			'```'
+		].join('\n');
+		const document = await vscode.workspace.openTextDocument({
+			content,
+			language: 'markdown'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		const cursor = document.positionAt(content.indexOf('2'));
+		editor.selection = new vscode.Selection(cursor, cursor);
+
+		const expectedSelections = [
+			'{"value": 2}',
+			'[1, {"value": 2}]',
+			'{"items": [1, {"value": 2}]}',
+			content
+		];
+		for (const expected of expectedSelections) {
+			await vscode.commands.executeCommand('caser.toSelectEnclosure');
+			assert.strictEqual(document.getText(editor.selection), expected);
+		}
+	});
+
+	test('findEnclosures recognizes a shorter fence nested inside a longer fence', () => {
+		const content = [
+			'````markdown',
+			'```json',
+			'{"value": 1}',
+			'```',
+			'````'
+		].join('\n');
+		const fences = findEnclosures(content, 'markdown')
+			.filter(enclosure => enclosure.kind === 'fence');
+
+		assert.strictEqual(fences.length, 2);
+		assert.deepStrictEqual(
+			fences.map(fence => content.slice(fence.start, fence.end)),
+			[
+				content,
+				['```json', '{"value": 1}', '```'].join('\n')
+			]
+		);
 	});
 
 	test('toAnchor formats a numbered anchor and workspace-relative bookmark link', () => {

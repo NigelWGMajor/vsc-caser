@@ -1,6 +1,6 @@
 # caser README
 
-This is the README for extension "caser" v 1.0.46
+This is the README for extension "caser" v 1.0.47
 
 ## Building and Running
 
@@ -23,6 +23,112 @@ This is the README for extension "caser" v 1.0.46
 ## Features
 
 This is a text editor extension providing enhanced text editing. Multiple selections are usually accepted: where noted, defaults will be applied when there is no selection: w: defaults to current word l: defaults to current line 
+
+### Enclosure navigation
+
+`to-StartOrEnd` (`caser.toStartOrEnd`) navigates the innermost enclosure at each cursor. From inside an enclosure it moves to the opening delimiter; from the opening delimiter it moves to the matching closing delimiter. Repeated use toggles between both ends.
+
+`to-SelectEnclosure` (`caser.toSelectEnclosure`) selects the complete innermost enclosure, including its delimiters. Repeated use expands the selection through its enclosing parents.
+
+Both commands understand nested parentheses, square and curly brackets, quotes, backticks, JavaScript regular expressions, and Markdown backtick or tilde fences. Angle brackets are recognized in markup-oriented documents. Matching skips escaped or doubled CSV/SQL quotes and common language comments, so delimiters inside strings and comments do not prematurely close an outer code or data enclosure.
+
+### Complete Command Palette index
+
+This index is generated from the commands contributed by the extension manifest. The sections below provide additional usage details for the more complex commands.
+
+| Command Palette title | Command ID |
+| --------------------- | ---------- |
+| `to-Dimmed` | `caser.toDimmed` |
+| `to-Title` | `caser.toTitleCase` |
+| `to-Other` | `caser.toOtherCase` |
+| `to-Camel` | `caser.toCamelCase` |
+| `to-Pascal` | `caser.toPascalCase` |
+| `to-Snake` | `caser.toSnakeCase` |
+| `to-Space` | `caser.toSpaceCase` |
+| `to-Kebab` | `caser.toKebabCase` |
+| `to-Escaped` | `caser.toEscaped` |
+| `to-UnEscaped` | `caser.toUnEscaped` |
+| `to-UnQuoted` | `caser.toUnQuoted` |
+| `to-Quoted` | `caser.toQuoted` |
+| `to-BackTicked` | `caser.toBackTicked` |
+| `to-UnBackTicked` | `caser.toUnBackTicked` |
+| `to-UnSQuoted` | `caser.toUnSQuoted` |
+| `to-SQuoted` | `caser.toSQuoted` |
+| `LoremIpsum` | `caser.loremIpsum` |
+| `to-Square` | `caser.toSquare` |
+| `to-Parens` | `caser.toParens` |
+| `to-Curly` | `caser.toCurly` |
+| `to-Angle` | `caser.toAngle` |
+| `to-None` | `caser.toNone` |
+| `to-Tilded` | `caser.toTilded` |
+| `to-Starred` | `caser.toStarred` |
+| `to-Indent` | `caser.toIndent` |
+| `to-LineComment` | `caser.toLineComment` |
+| `to-UnderScored` | `caser.toUnderScored` |
+| `to-Clear` | `caser.toClear` |
+| `to-Secure` | `caser.toSecure` |
+| `to-Flip` | `caser.toFlip` |
+| `to-Compact` | `caser.toCompact` |
+| `to-OneLine` | `caser.toOneLine` |
+| `to-Swap` | `caser.toSwap` |
+| `mark-Line` | `caser.markLine` |
+| `mark-Step` | `caser.markStep` |
+| `mark-Warn` | `caser.markWarn` |
+| `mark-Ref` | `caser.markRef` |
+| `mark-User` | `caser.markUser` |
+| `mark-Link` | `caser.markLink` |
+| `mark-Query` | `caser.markQuery` |
+| `to-Pad` | `caser.toPad` |
+| `to-Trim` | `caser.toTrim` |
+| `to-Test` | `caser.toTest` |
+| `mark-None` | `caser.markNone` |
+| `mark-Number` | `caser.markNumber` |
+| `to-End` | `caser.toEnd` |
+| `to-NextEnd` | `caser.toNextEnd` |
+| `to-Timestamp` | `caser.toTimestamp` |
+| `to-StartOrEnd` | `caser.toStartOrEnd` |
+| `to-SelectEnclosure` | `caser.toSelectEnclosure` |
+| `to-Fence` | `caser.toFence` |
+| `to-PrefixList` | `caser.toPrefixList` |
+| `to-Order` | `caser.toOrder` |
+| `to-SuffixList` | `caser.toSuffixList` |
+| `to-NumericSequence` | `caser.toNumbered` |
+| `to-NoCurly` | `caser.toNoCurly` |
+| `to-NoParens` | `caser.toNoParens` |
+| `to-NoSquare` | `caser.toNoSquare` |
+| `to-NoAngle` | `caser.toNoAngle` |
+| `to-File` | `caser.toFile` |
+| `Save-To-Bucket` | `caser.saveToBucket` |
+| `Load-From-Bucket` | `caser.loadFromBucket` |
+| `to-Dos-Slash` | `caser.toDos` |
+| `to-Unix-Slash` | `caser.toUnix` |
+| `to-Pipe-or-Comma` | `caser.toTogglePipeComma` |
+| `to-Select-by-Regex` | `caser.selectByRegex` |
+| `to-NewLine` | `caser.toNewLine` |
+| `to-Multiple` | `caser.toMultiple` |
+| `to-Terminal` | `caser.toTerminal` |
+| `to-Powershell` | `caser.toPowershell` |
+| `to-Bash` | `caser.toBash` |
+| `to-Math` | `caser.toMath` |
+| `to-Clipboard` | `caser.toClipboard` |
+| `show-quick-ref` | `caser.quickRef` |
+| `triage-filename` | `caser.triageNextRowAsFileName` |
+| `to-Table` | `caser.csvToMarkdownTable` |
+| `to-EscapedCsv` | `caser.toEscapedCsv` |
+| `to-WrappedColumns` | `caser.toWrappedColumns` |
+| `to-UnwrappedColumns` | `caser.toUnwrappedColumns` |
+| `to-Hierarchy` | `caser.toTree` |
+| `to-Anchor` | `caser.toAnchor` |
+| `to-Header` | `caser.toHeader` |
+| `to-Continue-indent` | `caser.toContinue` |
+| `to-Ditto` | `caser.toDitto` |
+| `to-NestImages` | `caser.toNestImages` |
+| `to-PasteNestedImage` | `caser.toPasteNestedImage` |
+| `to-WhereUsedLocally` | `caser.toWhereUsedLocally` |
+| `to-UnusedImages` | `caser.toUnusedImages` |
+| `to-RepairDocumentLinks` | `caser.toRepairDocumentLinks` |
+| `to-UnreferencedDocuments` | `caser.toUnreferencedDocuments` |
+| `to-NewDocumentLocation` | `caser.toNewDocumentLocation` |
 
 Suggested keybindings:
 |abb|modifiers     | group      | general usage                    |
@@ -102,7 +208,7 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 ### Casing/pathing:
 | key      | method            |notes         |
 | -------- | ----------------- | ------------ |
-| `cs U`   | to-UpperCase  (w) | `UPPER CASE` |
+| `cs U`   | to-OtherCase  (w) | `UPPER CASE` | cycles through cases
 | `cs L`   | to-LowerCase  (w) | `lower case` |
 | `cs T`   | to-TitleCase  (w) | `Title Case` |
 | `cs C`   | to-CamelCase  (w) | `camelCase`  |
@@ -138,39 +244,39 @@ In a word, letters selected| Exchanges the start of the word and the end, eaving
 
 ### Formatting and selection   
 
-| key       | method                |notes                                                                                        |                                     |
-| --------- | --------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------- |
-| `cs E`    | to-Escaped       (l)  |                                                                                             |                                     | 
-| `as E`    | to-UnEscaped     (l)  |                                                                                             |                                     | 
-| `as P`    | to-Pad           (l)  | Pads with spaces to widest part of selection and selects each line                          |                                     | 
-| `as \|`   | to-Pipe-or-Comma      | Toggles pipes or commas based on first in first line                                        |                                     | 
-| `as T`    | to-Trim          (l)  | Trims trailing spaces and selects each line                                                 |                                     | 
-| `as C`    | to-Compact       (l)  | removes most white space including newlines                                                 |                                     | 
-| `as <`    | to-leading       (l)  | pushes a comma-separated list to leading commas multiline                                   |                                     | 
-| `as >`    | to-trailing      (l)  | pushes a comma-separated list to training commas multiline                                  |                                     | 
-| `as R`    | to-Select-by-Regex  s | elects based on regex                                                                       |                                     | 
-| `as N`    | as New Line      (w)  | place each selection on a new line                                                          |                                     | 
-|  `a M`    | to-Multiple      (l)  | repeats selection inline, or current line when nothing is selected                          |                                     | 
-| `as D`    | to-Dimmed             | toggles dimming on any line matched in the dimmableMatches setting for the current language |                                     | 
-| `a N`     | to-numeric-sequence   | inserts or replaces trailing numbers in-line in the sequence selected                       | starting with the first number or 1 |
-| `a O`     | to-Ordered            | orders a selected block by line alphabetically                                              |                                     | 
-| `a D`     | to-Ditto              | copies the item above word by word                                                          |                                     | 
-| `a H`     | to-Hierarchy          | draws tree characters representing a hierarchy                                              |                                     | 
-|            | to-EscapedCsv         | replaces newlines inside quoted CSV fields with `\n`, keeping each CSV record on one line    |                                     |
-| `a T`     | to-Table              | converts CSV to a Markdown table and automatically escapes quoted multiline fields           |                                     |
-|            | to-WrappedColumns     | wraps Markdown table cells at the configured width (default 50) without splitting URLs        |                                     |
-|            | to-UnwrappedColumns   | joins wrapped continuation rows back into their original Markdown table rows                  |                                     |
-| `a #`     | to-Header             | loops through header levels                                                                 |                                     | 
-| `a enter` | to-Continue-indented  | like ctrl+enter but replicates the current indent style and depth  
-| `a -`     | to-Indent             | rotate through levels of indented bullet                        || 
-| `a /`     | to-Line-Comment       | insert special ad-hoc line comment non-destructively in markdown
-|           | to-Fence              | wrap text in a fenced block, insert an empty block, or cycle its language
+| key       | method                | notes                                                                                       |                                                      |
+| --------- | --------------------- | ------------------------------------------------------------------------------------------- | ---------------------------------------------------- |  |
+| `cs E`    | to-Escaped       (l)  |                                                                                             |                                                      |
+| `as E`    | to-UnEscaped     (l)  |                                                                                             |                                                      |
+| `as P`    | to-Pad           (l)  | Pads with spaces to widest part of selection and selects each line                          |                                                      |
+| `as \     | `                     | to-Pipe-or-Comma                                                                            | Toggles pipes or commas based on first in first line |  |
+| `as T`    | to-Trim          (l)  | Trims trailing spaces and selects each line                                                 |                                                      |
+| `as C`    | to-Compact       (l)  | removes most white space including newlines                                                 |                                                      |
+| `as <`    | to-leading       (l)  | pushes a comma-separated list to leading commas multiline                                   |                                                      |
+| `as >`    | to-trailing      (l)  | pushes a comma-separated list to training commas multiline                                  |                                                      |
+| `as R`    | to-Select-by-Regex  s | elects based on regex                                                                       |                                                      |
+| `as N`    | as New Line      (w)  | place each selection on a new line                                                          |                                                      |
+| `a M`     | to-Multiple      (l)  | repeats selection inline, or current line when nothing is selected                          |                                                      |
+| `as D`    | to-Dimmed             | toggles dimming on any line matched in the dimmableMatches setting for the current language |                                                      |
+| `a N`     | to-numeric-sequence   | inserts or replaces trailing numbers in-line in the sequence selected                       | starting with the first number or 1                  |
+| `a O`     | to-Ordered            | orders a selected block by line alphabetically                                              |                                                      |
+| `a D`     | to-Ditto              | copies the item above word by word                                                          |                                                      |
+| `a H`     | to-Hierarchy          | draws tree characters representing a hierarchy                                              |                                                      |
+|           | to-EscapedCsv         | replaces newlines inside quoted CSV fields with `\n`, keeping each CSV record on one line   |                                                      |
+| `a T`     | to-Table              | converts CSV to a Markdown table and automatically escapes quoted multiline fields          |                                                      |
+|           | to-WrappedColumns     | wraps Markdown table cells at the configured width (default 50) without splitting URLs      |                                                      |
+|           | to-UnwrappedColumns   | joins wrapped continuation rows back into their original Markdown table rows                |                                                      |
+| `a #`     | to-Header             | loops through header levels                                                                 |                                                      |
+| `a enter` | to-Continue-indented  | like ctrl+enter but replicates the current indent style and depth                           |
+| `a -`     | to-Indent             | rotate through levels of indented bullet                                                    |                                                      |
+| `a /`     | to-Line-Comment       | insert special ad-hoc line comment non-destructively in markdown                            |
+|           | to-Fence              | wrap text in a fenced block, insert an empty block, or cycle its language                   |
 ### Dummy text
 
-| key    | method     |
-| ------ | ---------- |
+| key     | method     |
+| ------- | ---------- |
 
-| `as L` | LoremIpsum |
+| `acs L` | LoremIpsum |
 
 ### Encryption
 | key    | method  | notes                                                |
@@ -202,10 +308,10 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 | `ac L` | markLink    | [🔗]() [🔖](#)  [🎟️]()  [🔀]()  [ℹ️]()  [⏪]()  [⏩]()            |
 | `ac P` | to-End      | pushes content to end         | If starts with a header             |
 |        |             |                               |that is moved and a link inserted.   |
-| `ac F` | to-File     | First use prompts for a workspace-relative filename or path.        |
+| `acs F`| to-File     | First use prompts for a workspace-relative filename or path.        |
 |        |             | The selection (or current line) moves to that file.                  |
 |        |             | Later uses append to the same file for the current VS Code session.  |
-|        | to-Anchor   | Inserts `<a id="ref-N"></a>` before line N and copies a link such as `[ref-N](./path/file.md#ref-N)`. |
+| `a A`  | to-Anchor   | Inserts `<a id="ref-N"></a>` before line N and copies a link such as `[ref-N](./path/file.md#ref-N)`. |
 
 ### Nested images
 
@@ -273,9 +379,9 @@ Buckets are created automatically based on the **Caser > Bucket Span** setting (
 
 | key               | method                                  | notes                                      |
 | ----------------- | --------------------------------------- | ------------------------------------------ |
-| `triage-filename` | is used to step through a list of files | typically for traige or checking purposes. |
+| `a F`             | `triage-filename`                       | is used to step through a list of files    |
 
-Starting at the first line in the file, when triggered:
+Starting at the first or selected line in the file, when triggered:
 
 - any filename on that line will be pasted into the command bar to allow searching
 - the row will be moved above an empty line so that it is easy to keep track of

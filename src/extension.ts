@@ -40,6 +40,11 @@ import {
     unwrapMarkdownTableColumns,
     wrapMarkdownTableColumns
 } from './selectionTransforms';
+import {
+    findEnclosureAtOffset,
+    findEnclosureForRange,
+    findEnclosures
+} from './enclosures';
 const math = require('mathjs');
 import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
@@ -67,6 +72,11 @@ export function buildAnchorDetails(relativeFilePath: string, zeroBasedLine: numb
         anchor: `<a id="${anchorId}"></a>`,
         bookmarkLink: `[${anchorId}](${formattedLinkTarget})`
     };
+}
+
+export function formatTimestamp(date: Date = new Date()): string {
+    const pad = (value: number) => value.toString().padStart(2, '0');
+    return `⏱️ ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 class BucketFolderService {
@@ -2624,6 +2634,93 @@ export function activate(context: vscode.ExtensionContext) {
             return new vscode.Selection(target, target);
         });
     });
+    const toTimestamp = vscode.commands.registerCommand('caser.toTimestamp', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const timestamp = formatTimestamp();
+        const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+        const plans = editor.selections.map(selection => {
+            const position = selection.active;
+            const line = document.lineAt(position.line);
+            const onEmptyLine = position.character === 0 && line.text.length === 0;
+            return {
+                position,
+                offset: document.offsetAt(position),
+                text: onEmptyLine ? timestamp + eol : ` [${timestamp}] `
+            };
+        });
+        const insertions = [...new Map(plans.map(plan => [plan.offset, plan])).values()]
+            .sort((left, right) => left.offset - right.offset);
+
+        const applied = await editor.edit(builder => {
+            for (const insertion of insertions) {
+                builder.insert(insertion.position, insertion.text);
+            }
+        });
+        if (!applied) {
+            return;
+        }
+
+        editor.selections = plans.map(plan => {
+            const precedingLength = insertions
+                .filter(insertion => insertion.offset < plan.offset)
+                .reduce((length, insertion) => length + insertion.text.length, 0);
+            const position = document.positionAt(
+                plan.offset + precedingLength + plan.text.length
+            );
+            return new vscode.Selection(position, position);
+        });
+    });
+    const toStartOrEnd = vscode.commands.registerCommand('caser.toStartOrEnd', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const enclosures = findEnclosures(document.getText(), document.languageId);
+        editor.selections = editor.selections.map(selection => {
+            const offset = document.offsetAt(selection.active);
+            const enclosure = findEnclosureAtOffset(enclosures, offset);
+            if (!enclosure) {
+                return selection;
+            }
+            const atOpening = offset >= enclosure.start && offset <= enclosure.openingEnd;
+            const target = document.positionAt(
+                atOpening ? enclosure.closingStart : enclosure.start
+            );
+            return new vscode.Selection(target, target);
+        });
+    });
+    const toSelectEnclosure = vscode.commands.registerCommand('caser.toSelectEnclosure', () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const enclosures = findEnclosures(document.getText(), document.languageId);
+        editor.selections = editor.selections.map(selection => {
+            const enclosure = selection.isEmpty
+                ? findEnclosureAtOffset(enclosures, document.offsetAt(selection.active))
+                : findEnclosureForRange(
+                    enclosures,
+                    document.offsetAt(selection.start),
+                    document.offsetAt(selection.end)
+                );
+            if (!enclosure) {
+                return selection;
+            }
+            return new vscode.Selection(
+                document.positionAt(enclosure.start),
+                document.positionAt(enclosure.end)
+            );
+        });
+    });
     const toFence = vscode.commands.registerCommand('caser.toFence', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -4262,6 +4359,9 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toTest);
     context.subscriptions.push(toEnd);
     context.subscriptions.push(toNextEnd);
+    context.subscriptions.push(toTimestamp);
+    context.subscriptions.push(toStartOrEnd);
+    context.subscriptions.push(toSelectEnclosure);
     context.subscriptions.push(toFence);
     context.subscriptions.push(toPrefixList);
     context.subscriptions.push(toOrder);
