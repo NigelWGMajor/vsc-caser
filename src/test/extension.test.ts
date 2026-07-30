@@ -614,7 +614,7 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(document.offsetAt(editor.selection.active), '[🔗 '.length);
 	});
 
-	test('toFence wraps selected text and keeps its content selected', async () => {
+	test('toFence wraps selected text, selects the block, and cycles it', async () => {
 		const document = await vscode.workspace.openTextDocument({ content: 'fenced content' });
 		const editor = await vscode.window.showTextDocument(document);
 		editor.selection = new vscode.Selection(
@@ -626,10 +626,15 @@ suite('Extension Test Suite', () => {
 
 		const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
 		assert.strictEqual(document.getText(), ['```cs', 'fenced content', '```'].join(eol));
-		assert.strictEqual(document.getText(editor.selection), 'fenced content');
+		assert.strictEqual(document.getText(editor.selection), document.getText());
+
+		await vscode.commands.executeCommand('caser.toFence');
+
+		assert.strictEqual(document.getText(), ['```json', 'fenced content', '```'].join(eol));
+		assert.strictEqual(document.getText(editor.selection), document.getText());
 	});
 
-	test('toFence inserts an empty block with the cursor on the content line', async () => {
+	test('toFence inserts an empty selected block that can be cycled', async () => {
 		const document = await vscode.workspace.openTextDocument({ content: '' });
 		const editor = await vscode.window.showTextDocument(document);
 
@@ -637,7 +642,12 @@ suite('Extension Test Suite', () => {
 
 		const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
 		assert.strictEqual(document.getText(), ['```cs', '', '```'].join(eol));
-		assert.deepStrictEqual(editor.selection.active, new vscode.Position(1, 0));
+		assert.strictEqual(document.getText(editor.selection), document.getText());
+
+		await vscode.commands.executeCommand('caser.toFence');
+
+		assert.strictEqual(document.getText(), ['```json', '', '```'].join(eol));
+		assert.strictEqual(document.getText(editor.selection), document.getText());
 	});
 
 	test('toFence cycles the type of a selected fenced block', async () => {

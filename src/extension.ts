@@ -2772,8 +2772,8 @@ export function activate(context: vscode.ExtensionContext) {
 
             await editor.edit(builder => builder.replace(selection, replacement));
             editor.selection = new vscode.Selection(
-                editor.document.positionAt(selectionStartOffset + opening.length),
-                editor.document.positionAt(selectionStartOffset + opening.length + selectedText.length)
+                editor.document.positionAt(selectionStartOffset),
+                editor.document.positionAt(selectionStartOffset + replacement.length)
             );
             return;
         }
@@ -2814,11 +2814,14 @@ export function activate(context: vscode.ExtensionContext) {
         const opening = `\`\`\`${fenceTypes[0]}${eol}`;
         const replacement = leadingEol + opening + eol + '```' + trailingEol;
         const insertionOffset = document.offsetAt(selection.active);
-        const contentOffset = insertionOffset + leadingEol.length + opening.length;
+        const fenceStartOffset = insertionOffset + leadingEol.length;
+        const fenceEndOffset = insertionOffset + replacement.length - trailingEol.length;
 
         await editor.edit(builder => builder.insert(selection.active, replacement));
-        const contentPosition = editor.document.positionAt(contentOffset);
-        editor.selection = new vscode.Selection(contentPosition, contentPosition);
+        editor.selection = new vscode.Selection(
+            editor.document.positionAt(fenceStartOffset),
+            editor.document.positionAt(fenceEndOffset)
+        );
     });
     const toPrefixList = vscode.commands.registerCommand('caser.toPrefixList', () => {
         const editor = vscode.window.activeTextEditor;
