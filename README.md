@@ -39,6 +39,7 @@ This index is generated from the commands contributed by the extension manifest.
 | Command Palette title | Command ID |
 | --------------------- | ---------- |
 | `to-Dimmed` | `caser.toDimmed` |
+| `To-ToggleLineNumbers` | `caser.toToggleLineNumbers` |
 | `to-Title` | `caser.toTitleCase` |
 | `to-Other` | `caser.toOtherCase` |
 | `to-Camel` | `caser.toCamelCase` |

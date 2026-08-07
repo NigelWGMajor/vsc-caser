@@ -49,6 +49,18 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(-1, [1, 2, 3].indexOf(0));
 	});
 
+	test('To-ToggleLineNumbers turns active editor line numbers off and on', async () => {
+		const document = await vscode.workspace.openTextDocument({ content: 'first\nsecond' });
+		const editor = await vscode.window.showTextDocument(document);
+		editor.options = { lineNumbers: vscode.TextEditorLineNumbersStyle.On };
+
+		await vscode.commands.executeCommand('caser.toToggleLineNumbers');
+		assert.strictEqual(editor.options.lineNumbers, vscode.TextEditorLineNumbersStyle.Off);
+
+		await vscode.commands.executeCommand('caser.toToggleLineNumbers');
+		assert.strictEqual(editor.options.lineNumbers, vscode.TextEditorLineNumbersStyle.On);
+	});
+
 	test('toOneLine joins selected lines and preserves the final newline', async () => {
 		const document = await vscode.workspace.openTextDocument({
 			content: 'alpha  \t\n  beta\t\t\ngamma   \nnext'

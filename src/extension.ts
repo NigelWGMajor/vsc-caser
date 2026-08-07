@@ -4,6 +4,7 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto-js';
 import * as path from 'path';
+import { execFile } from 'child_process';
 import {
     expandImagePathMove,
     ImagePathMove,
@@ -61,6 +62,78 @@ type MarkedLinkMatch = {
     label: string;
     target: string;
 };
+
+const degreedRepositoryPath = 'C:\\source\\Degreed';
+const glassesPromptRunnerPath =
+    'C:\\source\\Degreed\\trunk\\Build\\Prompt\\build-runner.bat';
+const commandPromptPath = 'C:\\windows\\system32\\cmd.exe';
+
+function getGitWorktreePaths(repositoryPath: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+        execFile(
+            'git',
+            ['-C', repositoryPath, 'worktree', 'list', '--porcelain'],
+            { windowsHide: true },
+            (error, stdout) => {
+                if (error) {
+                    reject(error);
+                    return;
+                }
+
+                resolve(stdout
+                    .split(/\r?\n/)
+                    .filter(line => line.startsWith('worktree '))
+                    .map(line => path.win32.normalize(line.substring('worktree '.length).trim()))
+                    .filter(Boolean));
+            }
+        );
+    });
+}
+
+async function directoryExists(directoryPath: string): Promise<boolean> {
+    try {
+        const stat = await vscode.workspace.fs.stat(vscode.Uri.file(directoryPath));
+        return (stat.type & vscode.FileType.Directory) !== 0;
+    } catch {
+        return false;
+    }
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+    try {
+        const stat = await vscode.workspace.fs.stat(vscode.Uri.file(filePath));
+        return (stat.type & vscode.FileType.File) !== 0;
+    } catch {
+        return false;
+    }
+}
+
+async function getDegreedTrunkFolders(): Promise<Array<{
+    worktreePath: string;
+    trunkPath: string;
+}>> {
+    let worktreePaths = [degreedRepositoryPath];
+    try {
+        worktreePaths = worktreePaths.concat(
+            await getGitWorktreePaths(degreedRepositoryPath)
+        );
+    } catch {
+        // Keep the main repository available if Git cannot enumerate its worktrees.
+    }
+
+    const uniqueWorktrees = [...new Map(worktreePaths.map(worktreePath => {
+        const normalizedPath = path.win32.normalize(worktreePath);
+        return [normalizedPath.toLowerCase(), normalizedPath] as const;
+    })).values()];
+    const candidates = uniqueWorktrees.map(worktreePath => ({
+        worktreePath,
+        trunkPath: path.win32.join(worktreePath, 'trunk')
+    }));
+    const existence = await Promise.all(
+        candidates.map(candidate => directoryExists(candidate.trunkPath))
+    );
+    return candidates.filter((_candidate, index) => existence[index]);
+}
 
 export function buildAnchorDetails(relativeFilePath: string, zeroBasedLine: number) {
     const anchorId = `ref-${zeroBasedLine + 1}`;
@@ -1536,6 +1609,21 @@ export function activate(context: vscode.ExtensionContext) {
             vscode.window.showErrorMessage('Could not save the dimming state: ' + error);
         }
     });
+    const toToggleLineNumbers = vscode.commands.registerCommand(
+        'caser.toToggleLineNumbers',
+        () => {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                return;
+            }
+
+            editor.options = {
+                lineNumbers: editor.options.lineNumbers === vscode.TextEditorLineNumbersStyle.Off
+                    ? vscode.TextEditorLineNumbersStyle.On
+                    : vscode.TextEditorLineNumbersStyle.Off
+            };
+        }
+    );
     const toQuoted = vscode.commands.registerCommand('caser.toQuoted', () => {
         const editor = vscode.window.activeTextEditor;
         if (editor) {
@@ -3707,6 +3795,54 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }
     });
+    const toGlassesPrompt = vscode.commands.registerCommand(
+        'caser.toGlassesPrompt',
+        async () => {
+            if (!await fileExists(glassesPromptRunnerPath)) {
+                vscode.window.showErrorMessage(
+                    `Glasses Prompt runner was not found at ${glassesPromptRunnerPath}.`
+                );
+                return;
+            }
+
+            const trunkFolders = await getDegreedTrunkFolders();
+            if (trunkFolders.length === 0) {
+                vscode.window.showErrorMessage(
+                    `No trunk folders were found in ${degreedRepositoryPath} or its worktrees.`
+                );
+                return;
+            }
+
+            const selectedFolder = await vscode.window.showQuickPick(
+                trunkFolders.map(folder => ({
+                    label: folder.worktreePath === degreedRepositoryPath
+                        ? 'Degreed repository'
+                        : path.win32.basename(folder.worktreePath),
+                    description: folder.worktreePath,
+                    detail: folder.trunkPath,
+                    trunkPath: folder.trunkPath
+                })),
+                {
+                    placeHolder: 'Select the folder containing the trunk to use',
+                    title: 'to-GlassesPrompt'
+                }
+            );
+            if (!selectedFolder) {
+                return;
+            }
+
+            const terminal = vscode.window.createTerminal({
+                name: 'Glasses Prompt',
+                shellPath: commandPromptPath,
+                shellArgs: [
+                    '/c',
+                    `"${glassesPromptRunnerPath}" "${selectedFolder.trunkPath}"`
+                ],
+                cwd: selectedFolder.trunkPath
+            });
+            terminal.show();
+        }
+    );
     const triageNextRowAsFileName = vscode.commands.registerCommand('caser.triageNextRowAsFileName', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -4395,10 +4531,12 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toMath);    context.subscriptions.push(toMath);
     context.subscriptions.push(toClipboard);
     context.subscriptions.push(toDimmed);
+    context.subscriptions.push(toToggleLineNumbers);
     context.subscriptions.push(quickRef);
     context.subscriptions.push(toTerminal);
     context.subscriptions.push(toBash);
     context.subscriptions.push(toPowershell);
+    context.subscriptions.push(toGlassesPrompt);
     context.subscriptions.push(triageNextRowAsFileName);
     context.subscriptions.push(toNewDocumentLocation);
     context.subscriptions.push(toRepairDocumentLinks);

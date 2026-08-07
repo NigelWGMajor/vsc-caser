@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.47.",
-    "version": "1.0.47",
+    "description": "This is the README for extension \"caser\" version 1.0.49.",
+    "version": "1.0.49",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -255,6 +255,10 @@
             {
                 "command": "caser.toDimmed",
                 "title": "to-Dimmed"
+            },
+            {
+                "command": "caser.toToggleLineNumbers",
+                "title": "To-ToggleLineNumbers"
             },
             {
                 "command": "caser.toTitleCase",
@@ -535,6 +539,10 @@
             {
                 "command": "caser.toBash",
                 "title": "to-Bash"
+            },
+            {
+                "command": "caser.toGlassesPrompt",
+                "title": "to-GlassesPrompt"
             },
             {
                 "command": "caser.toMath",
