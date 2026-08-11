@@ -2821,6 +2821,10 @@ export function activate(context: vscode.ExtensionContext) {
             );
             return new vscode.Selection(target, target);
         });
+        editor.revealRange(
+            editor.selection,
+            vscode.TextEditorRevealType.InCenterIfOutsideViewport
+        );
     });
     const toSelectEnclosure = vscode.commands.registerCommand('caser.toSelectEnclosure', () => {
         const editor = vscode.window.activeTextEditor;
