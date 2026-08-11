@@ -46,6 +46,10 @@ import {
     findEnclosureForRange,
     findEnclosures
 } from './enclosures';
+import {
+    findMarkdownHeadingLines,
+    findMarkdownHeadingTargetLine
+} from './markdownNavigation';
 const math = require('mathjs');
 import { getEnvironmentData } from 'worker_threads';
 import { writeHeapSnapshot } from 'v8';
@@ -150,6 +154,16 @@ export function buildAnchorDetails(relativeFilePath: string, zeroBasedLine: numb
 export function formatTimestamp(date: Date = new Date()): string {
     const pad = (value: number) => value.toString().padStart(2, '0');
     return `⏱️ ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+export function resolveDimmedColor(colorSetting: string): string | vscode.ThemeColor {
+    const color = colorSetting.trim();
+    const themePrefix = 'theme:';
+    if (color.startsWith(themePrefix)) {
+        const themeColorId = color.substring(themePrefix.length).trim();
+        return new vscode.ThemeColor(themeColorId || 'descriptionForeground');
+    }
+    return color || new vscode.ThemeColor('descriptionForeground');
 }
 
 class BucketFolderService {
@@ -1538,10 +1552,16 @@ export function activate(context: vscode.ExtensionContext) {
         }
         editor.setDecorations(hideDecorationType, decorationsArray);
     }
-    const hideDecorationType = vscode.window.createTextEditorDecorationType({
-        color: new vscode.ThemeColor('descriptionForeground'),
-        opacity: '0.45',
-    });
+    function createDimDecorationType(): vscode.TextEditorDecorationType {
+        const colorSetting = vscode.workspace
+            .getConfiguration('caser')
+            .get<string>('dimmedColor', 'theme:descriptionForeground');
+        return vscode.window.createTextEditorDecorationType({
+            color: resolveDimmedColor(colorSetting),
+            opacity: '0.45',
+        });
+    }
+    let hideDecorationType = createDimDecorationType();
 
     function getDimRule(editor: vscode.TextEditor): string {
         const definitions = vscode.workspace
@@ -1577,9 +1597,15 @@ export function activate(context: vscode.ExtensionContext) {
                     .getConfiguration('caser')
                     .get<boolean>('dimActive', true);
             }
+            if (event.affectsConfiguration('caser.dimmedColor')) {
+                hideDecorationType.dispose();
+                hideDecorationType = createDimDecorationType();
+                context.subscriptions.push(hideDecorationType);
+            }
             if (
                 event.affectsConfiguration('caser.dimActive')
                 || event.affectsConfiguration('caser.dimmableMatches')
+                || event.affectsConfiguration('caser.dimmedColor')
             ) {
                 refreshDimmedEditors();
             }
@@ -2770,12 +2796,24 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         const document = editor.document;
-        const enclosures = findEnclosures(document.getText(), document.languageId);
+        const text = document.getText();
+        const enclosures = findEnclosures(text, document.languageId);
+        const headingLines = document.languageId === 'markdown'
+            ? findMarkdownHeadingLines(text)
+            : [];
         editor.selections = editor.selections.map(selection => {
             const offset = document.offsetAt(selection.active);
             const enclosure = findEnclosureAtOffset(enclosures, offset);
             if (!enclosure) {
-                return selection;
+                const targetLine = findMarkdownHeadingTargetLine(
+                    headingLines,
+                    selection.active.line
+                );
+                if (targetLine === undefined) {
+                    return selection;
+                }
+                const target = new vscode.Position(targetLine, 0);
+                return new vscode.Selection(target, target);
             }
             const atOpening = offset >= enclosure.start && offset <= enclosure.openingEnd;
             const target = document.positionAt(

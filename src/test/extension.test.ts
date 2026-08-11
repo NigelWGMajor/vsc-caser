@@ -6,7 +6,7 @@ import * as path from 'path';
 // You can import and use all API from the 'vscode' module
 // as well as import your extension to test it
 import * as vscode from 'vscode';
-import { buildAnchorDetails, formatTimestamp } from '../extension';
+import { buildAnchorDetails, formatTimestamp, resolveDimmedColor } from '../extension';
 import {
 	expandImagePathMove,
 	nestImagesInMarkdown,
@@ -442,6 +442,13 @@ suite('Extension Test Suite', () => {
 		);
 	});
 
+	test('resolveDimmedColor supports literal and theme colors', () => {
+		assert.strictEqual(resolveDimmedColor('#708090'), '#708090');
+		const themeColor = resolveDimmedColor('theme:editorCodeLens.foreground');
+		assert.ok(themeColor instanceof vscode.ThemeColor);
+		assert.strictEqual(themeColor.id, 'editorCodeLens.foreground');
+	});
+
 	test('toTimestamp creates a timestamp line and moves to the next empty line', async () => {
 		const document = await vscode.workspace.openTextDocument({ content: '' });
 		const editor = await vscode.window.showTextDocument(document);
@@ -487,6 +494,51 @@ suite('Extension Test Suite', () => {
 
 		await vscode.commands.executeCommand('caser.toStartOrEnd');
 		assert.deepStrictEqual(editor.selection.active, opening);
+	});
+
+	test('toStartOrEnd navigates Markdown headings when there is no enclosure', async () => {
+		const content = [
+			'# First',
+			'intro',
+			'```markdown',
+			'# Not a heading',
+			'```',
+			'## Second',
+			'details',
+			'### Third'
+		].join('\n');
+		const document = await vscode.workspace.openTextDocument({
+			content,
+			language: 'markdown'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		const firstHeading = new vscode.Position(0, 0);
+		editor.selection = new vscode.Selection(firstHeading, firstHeading);
+
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+		assert.deepStrictEqual(editor.selection.active, new vscode.Position(5, 0));
+
+		const body = new vscode.Position(6, 3);
+		editor.selection = new vscode.Selection(body, body);
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+		assert.deepStrictEqual(editor.selection.active, new vscode.Position(5, 0));
+
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+		assert.deepStrictEqual(editor.selection.active, new vscode.Position(7, 0));
+	});
+
+	test('toStartOrEnd does not use heading fallback outside Markdown', async () => {
+		const document = await vscode.workspace.openTextDocument({
+			content: '# First\nbody\n## Second',
+			language: 'plaintext'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		const cursor = new vscode.Position(1, 2);
+		editor.selection = new vscode.Selection(cursor, cursor);
+
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+
+		assert.deepStrictEqual(editor.selection.active, cursor);
 	});
 
 	test('toSelectEnclosure selects an inner enclosure and expands through its parents', async () => {

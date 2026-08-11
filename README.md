@@ -26,7 +26,7 @@ This is a text editor extension providing enhanced text editing. Multiple select
 
 ### Enclosure navigation
 
-`to-StartOrEnd` (`caser.toStartOrEnd`) navigates the innermost enclosure at each cursor. From inside an enclosure it moves to the opening delimiter; from the opening delimiter it moves to the matching closing delimiter. Repeated use toggles between both ends.
+`to-StartOrEnd` (`caser.toStartOrEnd`) navigates the innermost enclosure at each cursor. From inside an enclosure it moves to the opening delimiter; from the opening delimiter it moves to the matching closing delimiter. Repeated use toggles between both ends. In Markdown outside an enclosure, it moves from body text to the preceding heading, or from a heading to the next heading.
 
 `to-SelectEnclosure` (`caser.toSelectEnclosure`) selects the complete innermost enclosure, including its delimiters. Repeated use expands the selection through its enclosing parents.
 
@@ -141,6 +141,8 @@ Suggested keybindings:
 ## caser Properties
 
 **dimActive** controls whether configured matches are dimmed. It defaults to `true`, persists in VS Code's user settings, and is toggled by the `to-Dimmed` command.
+
+**dimmedColor** controls the color of dimmed text. It defaults to the theme-aware value `theme:descriptionForeground`. Set it to a CSS color such as `#808080` or `rgba(41, 35, 122, 0.87)`, or use `theme:<color-id>` to reference another VS Code theme color. Changes apply immediately to visible editors.
 
 **updateDocumentLinksOnMove** controls automatic Markdown link maintenance for files and folders renamed or moved in the VS Code Explorer. It defaults to `true`. When enabled, Caser updates links inside moved Markdown documents, inbound links from other Markdown documents, and inbound Markdown image references for moved images.
 
