@@ -632,6 +632,10 @@
             {
                 "command": "caser.toArchive",
                 "title": "to-Archive"
+            },
+            {
+                "command": "caser.toOpenFolder",
+                "title": "to-OpenFolder"
             }
         ],
         "configurationDefaults": {

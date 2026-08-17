@@ -4494,6 +4494,68 @@ export function activate(context: vscode.ExtensionContext) {
             );
         }
     );
+    const toOpenFolder = vscode.commands.registerCommand('caser.toOpenFolder', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const lineText = document.lineAt(editor.selection.active.line).text;
+
+        let extracted: string | undefined;
+
+        const mdLinkMatch = lineText.match(/\[.*?\]\(([^)]+)\)/);
+        if (mdLinkMatch) {
+            extracted = mdLinkMatch[1].replace(/^<|>$/g, '');
+        }
+
+        if (!extracted) {
+            const backtickMatch = lineText.match(/`([^`]+)`/);
+            if (backtickMatch) {
+                extracted = backtickMatch[1];
+            }
+        }
+
+        if (!extracted) {
+            const quotedMatch = lineText.match(/"([^"]+)"|'([^']+)'/);
+            if (quotedMatch) {
+                extracted = quotedMatch[1] ?? quotedMatch[2];
+            }
+        }
+
+        if (!extracted) {
+            extracted = lineText.trim();
+        }
+
+        if (!extracted) {
+            vscode.window.showInformationMessage('No path found on the current line.');
+            return;
+        }
+
+        extracted = extracted.replace(/#.*$/, '').trim();
+
+        let folderPath: string;
+        if (path.isAbsolute(extracted)) {
+            folderPath = extracted;
+        } else {
+            const documentDir = path.dirname(document.uri.fsPath);
+            folderPath = path.resolve(documentDir, extracted);
+        }
+
+        const hasExtension = path.extname(folderPath) !== '';
+        if (hasExtension) {
+            folderPath = path.dirname(folderPath);
+        }
+
+        if (!await directoryExists(folderPath)) {
+            vscode.window.showWarningMessage(`Folder not found: ${folderPath}`);
+            return;
+        }
+
+        const folderUri = vscode.Uri.file(folderPath);
+        await vscode.commands.executeCommand('vscode.openFolder', folderUri, { forceNewWindow: true });
+    });
     const toArchive = vscode.commands.registerCommand('caser.toArchive', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -4644,6 +4706,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toWhereUsedLocally);
     context.subscriptions.push(toUnusedImages);
     context.subscriptions.push(toArchive);
+    context.subscriptions.push(toOpenFolder);
 
 }
 
