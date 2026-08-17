@@ -4494,6 +4494,62 @@ export function activate(context: vscode.ExtensionContext) {
             );
         }
     );
+    const toArchive = vscode.commands.registerCommand('caser.toArchive', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        const document = editor.document;
+        const selection = defaultToLineSelected(editor, editor.selection);
+        const text = document.getText(selection);
+        if (!text.trim()) {
+            vscode.window.showInformationMessage('No text selected to archive.');
+            return;
+        }
+
+        const fileDir = path.dirname(document.uri.fsPath);
+        const arcDir = path.join(fileDir, 'arc');
+        const arcUri = vscode.Uri.file(arcDir);
+
+        try {
+            await vscode.workspace.fs.createDirectory(arcUri);
+        } catch { }
+
+        const now = new Date();
+        const yy = now.getFullYear().toString().slice(-2);
+        const mm = (now.getMonth() + 1).toString().padStart(2, '0');
+        const dd = now.getDate().toString().padStart(2, '0');
+        const datePrefix = `${yy}-${mm}-${dd}`;
+
+        function archiveSuffix(index: number): string {
+            if (index < 26) {
+                return String.fromCharCode(97 + index);
+            }
+            const adjusted = index - 26;
+            return String.fromCharCode(97 + Math.floor(adjusted / 26))
+                + String.fromCharCode(97 + (adjusted % 26));
+        }
+
+        let suffixIndex = 0;
+        let fileName: string;
+        let fileUri: vscode.Uri;
+        do {
+            fileName = `${datePrefix}-${archiveSuffix(suffixIndex)}.md`;
+            fileUri = vscode.Uri.joinPath(arcUri, fileName);
+            suffixIndex++;
+        } while (await uriExists(fileUri));
+
+        await vscode.workspace.fs.writeFile(fileUri, new TextEncoder().encode(text));
+
+        const relativePath = `./arc/${fileName}`;
+        const snippet = new vscode.SnippetString()
+            .appendText(`[🛄 `)
+            .appendPlaceholder('description')
+            .appendText(`](${relativePath})`);
+
+        await editor.insertSnippet(snippet, selection);
+    });
     context.subscriptions.push(toCamelCase);
     context.subscriptions.push(toKebabCase);
     context.subscriptions.push(toSnakeCase);
@@ -4587,6 +4643,7 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toPasteNestedImage);
     context.subscriptions.push(toWhereUsedLocally);
     context.subscriptions.push(toUnusedImages);
+    context.subscriptions.push(toArchive);
 
 }
 

@@ -1,6 +1,6 @@
 # caser README
 
-This is the README for extension "caser" v 1.0.47
+This is the README for extension "caser" v 1.0.51
 
 ## Building and Running
 
@@ -130,6 +130,7 @@ This index is generated from the commands contributed by the extension manifest.
 | `to-RepairDocumentLinks` | `caser.toRepairDocumentLinks` |
 | `to-UnreferencedDocuments` | `caser.toUnreferencedDocuments` |
 | `to-NewDocumentLocation` | `caser.toNewDocumentLocation` |
+| `to-Archive` | `caser.toArchive` |
 
 Suggested keybindings:
 |abb|modifiers     | group      | general usage                    |
@@ -315,6 +316,7 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 |        |             | The selection (or current line) moves to that file.                  |
 |        |             | Later uses append to the same file for the current VS Code session.  |
 | `a A`  | to-Anchor   | Inserts `<a id="ref-N"></a>` before line N and copies a link such as `[ref-N](./path/file.md#ref-N)`. |
+|        | to-Archive  | Moves selection to a new file in `./arc/` named `yy-mm-dd-{suffix}.md` (suffix cycles a, b, ... z, aa, ab, ...). Replaces the selection with a 🛄 markdown link and leaves the cursor in the description field. |
 
 ### Nested images
 
