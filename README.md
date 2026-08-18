@@ -130,6 +130,7 @@ This index is generated from the commands contributed by the extension manifest.
 | `to-RepairDocumentLinks` | `caser.toRepairDocumentLinks` |
 | `to-UnreferencedDocuments` | `caser.toUnreferencedDocuments` |
 | `to-NewDocumentLocation` | `caser.toNewDocumentLocation` |
+| `to-OpenFolder` | `caser.toOpenFolder` |
 | `to-Archive` | `caser.toArchive` |
 
 Suggested keybindings:
@@ -190,6 +191,8 @@ sql:^\\s*--.*$
 **regexPatterns** lists useful regex patterns for use by the `Select by Regex` function.
 
 **fences** defines the language identifiers cycled by `to-Fence`. The first entry is used when wrapping selected text or inserting a new empty fenced block. The default is `cs`, `json`, `sql`, `ps`, `yaml`, `html`, `css`, and `mermaid`.
+
+**openFolderProfile** specifies the VS Code profile to use when `to-OpenFolder` opens a folder in a new window. If empty (the default), the current window's profile is carried forward to the new window.
 
 **quickRefPath** specifies the absolute path to a PDF file for quick reference access. If not set, defaults to `quick-reference.pdf` in the VSCode User folder (`%APPDATA%\Code\User\` on Windows, `~/.config/Code/User/` on Linux, `~/Library/Application Support/Code/User/` on macOS).
 

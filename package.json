@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.51.",
-    "version": "1.0.51",
+    "description": "This is the README for extension \"caser\" version 1.0.52.",
+    "version": "1.0.52",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -241,6 +241,11 @@
                     "type": "string",
                     "default": "",
                     "description": "Absolute path to the quick-reference PDF file. Defaults to quick-reference.pdf in VSCode's appData folder if not specified."
+                },
+                "caser.openFolderProfile": {
+                    "type": "string",
+                    "default": "",
+                    "description": "The VS Code profile to use when opening a folder in a new window via to-OpenFolder. If empty, the current window's profile is used."
                 },
                 "caser.bucketSpan": {
                     "type": "string",

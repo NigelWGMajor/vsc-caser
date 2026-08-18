@@ -4553,8 +4553,18 @@ export function activate(context: vscode.ExtensionContext) {
             return;
         }
 
-        const folderUri = vscode.Uri.file(folderPath);
-        await vscode.commands.executeCommand('vscode.openFolder', folderUri, { forceNewWindow: true });
+        let profile = vscode.workspace.getConfiguration('caser').get<string>('openFolderProfile', '');
+        if (!profile) {
+            const idx = process.argv.indexOf('--profile');
+            if (idx !== -1 && idx + 1 < process.argv.length) {
+                profile = process.argv[idx + 1];
+            }
+        }
+        const args = ['--new-window', folderPath];
+        if (profile) {
+            args.push('--profile', profile);
+        }
+        execFile('code', args, { shell: true });
     });
     const toArchive = vscode.commands.registerCommand('caser.toArchive', async () => {
         const editor = vscode.window.activeTextEditor;
