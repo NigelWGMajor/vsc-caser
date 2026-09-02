@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.52.",
-    "version": "1.0.52",
+    "description": "This is the README for extension \"caser\" version 1.0.53.",
+    "version": "1.0.53",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -258,6 +258,11 @@
                     ],
                     "default": "week",
                     "description": "Controls how SaveToBucket and LoadFromBucket group files under the workspace .data folder."
+                },
+                "caser.cssPath": {
+                    "type": "string",
+                    "default": "b:/dg/.work/vsc-xfer/nix-default.css",
+                    "description": "Absolute path to the CSS file used by to-Html when converting Markdown to HTML via pandoc."
                 }
             }
         },
@@ -641,6 +646,14 @@
             {
                 "command": "caser.toOpenFolder",
                 "title": "to-OpenFolder"
+            },
+            {
+                "command": "caser.toHtml",
+                "title": "to-Html"
+            },
+            {
+                "command": "caser.toJiraTicket",
+                "title": "to-JiraTicket"
             }
         ],
         "configurationDefaults": {

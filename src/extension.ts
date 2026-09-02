@@ -4566,6 +4566,80 @@ export function activate(context: vscode.ExtensionContext) {
         }
         execFile('code', args, { shell: true });
     });
+    const toHtml = vscode.commands.registerCommand('caser.toHtml', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+        const document = editor.document;
+        if (document.isUntitled) {
+            vscode.window.showWarningMessage('Save the document first.');
+            return;
+        }
+        const mdPath = document.uri.fsPath;
+        const htmlPath = mdPath.replace(/\.[^.]+$/, '.html');
+        const cssPath = vscode.workspace.getConfiguration('caser').get<string>('cssPath', '');
+        const args = [mdPath, '-s', '-o', htmlPath];
+        if (cssPath) {
+            args.push('--css', cssPath);
+        }
+        execFile('pandoc', args, { shell: true }, (error) => {
+            if (error) {
+                const msg = error.message ?? '';
+                if (msg.includes('ENOENT') || msg.includes('not recognized') || msg.includes('not found')) {
+                    const install = 'Install pandoc';
+                    vscode.window.showErrorMessage(
+                        'pandoc is not installed or not on your PATH. Install it from https://pandoc.org/installing.html — on Windows: winget install JohnMacFarlane.Pandoc (then restart VS Code).',
+                        install
+                    ).then(choice => {
+                        if (choice === install) {
+                            vscode.env.openExternal(vscode.Uri.parse('https://pandoc.org/installing.html'));
+                        }
+                    });
+                } else {
+                    vscode.window.showErrorMessage(`pandoc failed: ${msg}`);
+                }
+                return;
+            }
+            vscode.env.openExternal(vscode.Uri.file(htmlPath));
+        });
+    });
+    const toJiraTicket = vscode.commands.registerCommand('caser.toJiraTicket', async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            return;
+        }
+
+        let selection = editor.selection;
+        if (selection.isEmpty) {
+            const ticketRange = editor.document.getWordRangeAtPosition(
+                selection.active,
+                /[A-Za-z][A-Za-z0-9]*-\d+/
+            );
+            if (!ticketRange) {
+                vscode.window.showWarningMessage('Place the cursor on a Jira ticket, such as PD-123456.');
+                return;
+            }
+            selection = new vscode.Selection(ticketRange.start, ticketRange.end);
+            editor.selection = selection;
+        }
+
+        const ticket = editor.document.getText(selection).trim();
+        if (!/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(ticket)) {
+            vscode.window.showWarningMessage('Select a Jira ticket, such as PD-123456.');
+            return;
+        }
+
+        const jiraUrl = process.env.JIRA_URL;
+        if (!jiraUrl) {
+            vscode.window.showErrorMessage('JIRA_URL is not set.');
+            return;
+        }
+
+        await vscode.env.openExternal(vscode.Uri.parse(
+            `${jiraUrl.replace(/\/$/, '')}/browse/${ticket}`
+        ));
+    });
     const toArchive = vscode.commands.registerCommand('caser.toArchive', async () => {
         const editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -4717,6 +4791,8 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push(toUnusedImages);
     context.subscriptions.push(toArchive);
     context.subscriptions.push(toOpenFolder);
+    context.subscriptions.push(toHtml);
+    context.subscriptions.push(toJiraTicket);
 
 }
 

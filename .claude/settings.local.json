@@ -14,7 +14,8 @@
       "Bash(cmd.exe /c \"npm run package\")",
       "Bash(/c/nvm4w/nodejs/node.exe ./node_modules/.bin/webpack:*)",
       "Bash(/c/nvm4w/nodejs/node.exe ./node_modules/.bin/vsce:*)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm run *)"
     ],
     "deny": [],
     "ask": []

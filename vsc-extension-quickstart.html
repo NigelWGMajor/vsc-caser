@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="generator" content="pandoc 3.10.2" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes" />
+  <title>vsc-extension-quickstart</title>
+  <style>
+    /* Default styles provided by pandoc.
+    ** See https://pandoc.org/MANUAL.html#variables-for-html for config info.
+    */
+    span.smallcaps{font-variant: small-caps;}
+    div.columns{display: flex; gap: 1.5em;}
+    div.column{flex: auto;}
+    @media screen {
+    div.columns{gap: min(4vw, 1.5em);}
+    div.column{overflow-x: auto;}
+    }
+    div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+    /* The extra [class] is a hack that increases specificity enough to
+       override a similar rule in reveal.js */
+    ul.task-list[class]{list-style: none;}
+    ul.task-list li input[type="checkbox"] {
+      font-size: inherit;
+      width: 0.8em;
+      margin: 0 0.8em 0.2em -1.6em;
+      vertical-align: middle;
+    }
+    .display.math{display: block; text-align: center; margin: 0.5rem auto;}
+  </style>
+  <link rel="stylesheet" href="b:/dg/.work/vsc-xfer/nix-default.css" />
+</head>
+<body>
+<h1 id="welcome-to-your-vs-code-extension">Welcome to your VS Code
+Extension</h1>
+<h2 id="whats-in-the-folder">What’s in the folder</h2>
+<ul>
+<li>This folder contains all of the files necessary for your
+extension.</li>
+<li><code>package.json</code> - this is the manifest file in which you
+declare your extension and command.
+<ul>
+<li>The sample plugin registers a command and defines its title and
+command name. With this information VS Code can show the command in the
+command palette. It doesn’t yet need to load the plugin.</li>
+</ul></li>
+<li><code>src/extension.ts</code> - this is the main file where you will
+provide the implementation of your command.
+<ul>
+<li>The file exports one function, <code>activate</code>, which is
+called the very first time your extension is activated (in this case by
+executing the command). Inside the <code>activate</code> function we
+call <code>registerCommand</code>.</li>
+<li>We pass the function containing the implementation of the command as
+the second parameter to <code>registerCommand</code>.</li>
+</ul></li>
+</ul>
+<h2 id="get-up-and-running-straight-away">Get up and running straight
+away</h2>
+<ul>
+<li>Press <code>F5</code> to open a new window with your extension
+loaded.</li>
+<li>Run your command from the command palette by pressing
+(<code>Ctrl+Shift+P</code> or <code>Cmd+Shift+P</code> on Mac) and
+typing <code>Hello World</code>.</li>
+<li>Set breakpoints in your code inside <code>src/extension.ts</code> to
+debug your extension.</li>
+<li>Find output from your extension in the debug console.</li>
+</ul>
+<h2 id="make-changes">Make changes</h2>
+<ul>
+<li>You can relaunch the extension from the debug toolbar after changing
+code in <code>src/extension.ts</code>.</li>
+<li>You can also reload (<code>Ctrl+R</code> or <code>Cmd+R</code> on
+Mac) the VS Code window with your extension to load your changes.</li>
+</ul>
+<h2 id="explore-the-api">Explore the API</h2>
+<ul>
+<li>You can open the full set of our API when you open the file
+<code>node_modules/@types/vscode/index.d.ts</code>.</li>
+</ul>
+<h2 id="run-tests">Run tests</h2>
+<ul>
+<li>Install the <a
+href="https://marketplace.visualstudio.com/items?itemName=ms-vscode.extension-test-runner">Extension
+Test Runner</a></li>
+<li>Run the “watch” task via the <strong>Tasks: Run Task</strong>
+command. Make sure this is running, or tests might not be
+discovered.</li>
+<li>Open the Testing view from the activity bar and click the Run Test”
+button, or use the hotkey <code>Ctrl/Cmd + ; A</code></li>
+<li>See the output of the test result in the Test Results view.</li>
+<li>Make changes to <code>src/test/extension.test.ts</code> or create
+new test files inside the <code>test</code> folder.
+<ul>
+<li>The provided test runner will only consider files matching the name
+pattern <code>**.test.ts</code>.</li>
+<li>You can create folders inside the <code>test</code> folder to
+structure your tests any way you want.</li>
+</ul></li>
+</ul>
+<h2 id="go-further">Go further</h2>
+<ul>
+<li><a
+href="https://code.visualstudio.com/api/ux-guidelines/overview">Follow
+UX guidelines</a> to create extensions that seamlessly integrate with VS
+Code’s native interface and patterns.</li>
+<li>Reduce the extension size and improve the startup time by <a
+href="https://code.visualstudio.com/api/working-with-extensions/bundling-extension">bundling
+your extension</a>.</li>
+<li><a
+href="https://code.visualstudio.com/api/working-with-extensions/publishing-extension">Publish
+your extension</a> on the VS Code extension marketplace.</li>
+<li>Automate builds by setting up <a
+href="https://code.visualstudio.com/api/working-with-extensions/continuous-integration">Continuous
+Integration</a>.</li>
+</ul>
+</body>
+</html>
