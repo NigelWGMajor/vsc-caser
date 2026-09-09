@@ -2867,6 +2867,8 @@ export function activate(context: vscode.ExtensionContext) {
         const selection = editor.selection;
         const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
         const fenceLinePattern = /^([ \t]*)```([^`\s]*)[ \t]*$/;
+        const regionOpeningLinePattern = /^([ \t]*)<!--\s*#region\b[^>]*-->[ \t]*$/i;
+        const regionClosingLinePattern = /^([ \t]*)<!--\s*#endregion\b[^>]*-->[ \t]*$/i;
         const nextFenceType = (currentFenceType: string): string => {
             const currentIndex = fenceTypes.indexOf(currentFenceType);
             return currentIndex === -1 ? fenceTypes[0] : fenceTypes[(currentIndex + 1) % fenceTypes.length];
@@ -2876,6 +2878,10 @@ export function activate(context: vscode.ExtensionContext) {
             const selectedText = document.getText(selection);
             const openingLineText = selectedText.split(/\r?\n/, 1)[0];
             const openingFence = openingLineText.match(fenceLinePattern);
+            const selectedLines = selectedText.split(/\r?\n/);
+            const openingRegion = openingLineText.match(regionOpeningLinePattern);
+            const closingRegion = selectedLines[selectedLines.length - 1]
+                .match(regionClosingLinePattern);
 
             if (openingFence) {
                 const replacement = `${openingFence[1]}\`\`\`${nextFenceType(openingFence[2])}`;
@@ -2895,9 +2901,38 @@ export function activate(context: vscode.ExtensionContext) {
                 return;
             }
 
-            const opening = `\`\`\`${fenceTypes[0]}${eol}`;
+            if (openingRegion && closingRegion) {
+                const selectionStartOffset = document.offsetAt(selection.start);
+                const selectionEndOffset = document.offsetAt(selection.end);
+                const openingReplacement = `${openingRegion[1]}\`\`\`${fenceTypes[0]}`;
+                const closingReplacement = `${closingRegion[1]}\`\`\``;
+                const openingRange = new vscode.Range(
+                    selection.start,
+                    document.positionAt(selectionStartOffset + openingLineText.length)
+                );
+                const closingLineStartOffset = selectionEndOffset
+                    - selectedLines[selectedLines.length - 1].length;
+                const closingRange = new vscode.Range(
+                    document.positionAt(closingLineStartOffset),
+                    selection.end
+                );
+                const delta = openingReplacement.length - openingLineText.length
+                    + closingReplacement.length - selectedLines[selectedLines.length - 1].length;
+
+                await editor.edit(builder => {
+                    builder.replace(openingRange, openingReplacement);
+                    builder.replace(closingRange, closingReplacement);
+                });
+                editor.selection = new vscode.Selection(
+                    editor.document.positionAt(selectionStartOffset),
+                    editor.document.positionAt(selectionEndOffset + delta)
+                );
+                return;
+            }
+
+            const opening = `<!-- #region -->${eol}`;
             const closingPrefix = selectedText.endsWith('\n') ? '' : eol;
-            const replacement = opening + selectedText + closingPrefix + '```';
+            const replacement = opening + selectedText + closingPrefix + '<!-- #endregion -->';
             const selectionStartOffset = document.offsetAt(selection.start);
 
             await editor.edit(builder => builder.replace(selection, replacement));
@@ -2910,6 +2945,38 @@ export function activate(context: vscode.ExtensionContext) {
 
         const currentLineNumber = selection.active.line;
         const currentFence = document.lineAt(currentLineNumber).text.match(fenceLinePattern);
+        const currentRegion = document.lineAt(currentLineNumber).text.match(regionOpeningLinePattern)
+            ?? document.lineAt(currentLineNumber).text.match(regionClosingLinePattern);
+        if (currentRegion) {
+            const enclosure = findEnclosureAtOffset(
+                findEnclosures(document.getText(), document.languageId),
+                document.offsetAt(selection.active)
+            );
+            if (!enclosure || enclosure.kind !== 'region') {
+                return;
+            }
+
+            const openingRange = new vscode.Range(
+                document.positionAt(enclosure.start),
+                document.positionAt(enclosure.openingEnd)
+            );
+            const closingRange = new vscode.Range(
+                document.positionAt(enclosure.closingStart),
+                document.positionAt(enclosure.end)
+            );
+            const openingIndent = document.getText(openingRange).match(/^[ \t]*/)?.[0] ?? '';
+            const closingIndent = document.getText(closingRange).match(/^[ \t]*/)?.[0] ?? '';
+            const openingReplacement = `${openingIndent}\`\`\`${fenceTypes[0]}`;
+            const closingReplacement = `${closingIndent}\`\`\``;
+
+            await editor.edit(builder => {
+                builder.replace(openingRange, openingReplacement);
+                builder.replace(closingRange, closingReplacement);
+            });
+            const target = editor.document.lineAt(currentLineNumber).range.end;
+            editor.selection = new vscode.Selection(target, target);
+            return;
+        }
         if (currentFence) {
             let unmatchedOpeningLine: number | undefined;
             for (let lineNumber = 0; lineNumber < currentLineNumber; lineNumber++) {
@@ -2941,8 +3008,8 @@ export function activate(context: vscode.ExtensionContext) {
         const line = document.lineAt(selection.active.line);
         const leadingEol = selection.active.character === 0 ? '' : eol;
         const trailingEol = selection.active.character === line.text.length ? '' : eol;
-        const opening = `\`\`\`${fenceTypes[0]}${eol}`;
-        const replacement = leadingEol + opening + eol + '```' + trailingEol;
+        const opening = `<!-- #region -->${eol}`;
+        const replacement = leadingEol + opening + eol + '<!-- #endregion -->' + trailingEol;
         const insertionOffset = document.offsetAt(selection.active);
         const fenceStartOffset = insertionOffset + leadingEol.length;
         const fenceEndOffset = insertionOffset + replacement.length - trailingEol.length;

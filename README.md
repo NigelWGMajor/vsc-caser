@@ -30,7 +30,9 @@ This is a text editor extension providing enhanced text editing. Multiple select
 
 `to-SelectEnclosure` (`caser.toSelectEnclosure`) selects the complete innermost enclosure, including its delimiters. Repeated use expands the selection through its enclosing parents.
 
-Both commands understand nested parentheses, square and curly brackets, quotes, backticks, JavaScript regular expressions, and Markdown backtick or tilde fences. Angle brackets are recognized in markup-oriented documents. Matching skips escaped or doubled CSV/SQL quotes and common language comments, so delimiters inside strings and comments do not prematurely close an outer code or data enclosure.
+`to-Fence` starts with a `<!-- #region -->` / `<!-- #endregion -->` envelope, then changes that envelope to the first configured Markdown fence type. Later uses continue cycling through the configured fence types.
+
+Both commands understand nested parentheses, square and curly brackets, quotes, backticks, JavaScript regular expressions, Markdown backtick or tilde fences, and `<!-- #region -->` / `<!-- #endregion -->` comment regions (including optional marker comments). Angle brackets are recognized in markup-oriented documents. Matching skips escaped or doubled CSV/SQL quotes and common language comments, so delimiters inside strings and comments do not prematurely close an outer code or data enclosure.
 
 ### Complete Command Palette index
 

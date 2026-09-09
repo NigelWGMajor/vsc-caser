@@ -7,7 +7,8 @@ export type EnclosureKind =
     | 'doubleQuotes'
     | 'backticks'
     | 'regex'
-    | 'fence';
+    | 'fence'
+    | 'region';
 
 export interface Enclosure {
     kind: EnclosureKind;
@@ -23,6 +24,12 @@ interface FenceToken {
     marker: '`' | '~';
     length: number;
     tail: string;
+}
+
+interface RegionToken {
+    kind: 'opening' | 'closing';
+    start: number;
+    end: number;
 }
 
 interface BracketOpening {
@@ -148,6 +155,47 @@ function findFenceEnclosures(tokens: readonly FenceToken[]): Enclosure[] {
             });
         } else {
             stack.push(token);
+        }
+    }
+
+    return enclosures;
+}
+
+function findRegionTokens(text: string): RegionToken[] {
+    const tokens: RegionToken[] = [];
+    const pattern = /<!--\s*#(region|endregion)\b[^>]*-->/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = pattern.exec(text)) !== null) {
+        tokens.push({
+            kind: match[1].toLocaleLowerCase() === 'region' ? 'opening' : 'closing',
+            start: match.index,
+            end: match.index + match[0].length
+        });
+    }
+
+    return tokens;
+}
+
+function findRegionEnclosures(tokens: readonly RegionToken[]): Enclosure[] {
+    const stack: RegionToken[] = [];
+    const enclosures: Enclosure[] = [];
+
+    for (const token of tokens) {
+        if (token.kind === 'opening') {
+            stack.push(token);
+            continue;
+        }
+
+        const opening = stack.pop();
+        if (opening) {
+            enclosures.push({
+                kind: 'region',
+                start: opening.start,
+                openingEnd: opening.end,
+                closingStart: token.start,
+                end: token.end
+            });
         }
     }
 
@@ -404,7 +452,10 @@ function parseRegularSegment(
 
 export function findEnclosures(text: string, languageId = 'plaintext'): Enclosure[] {
     const fenceTokens = findFenceTokens(text);
-    const enclosures = findFenceEnclosures(fenceTokens);
+    const enclosures = [
+        ...findFenceEnclosures(fenceTokens),
+        ...findRegionEnclosures(findRegionTokens(text))
+    ];
     let segmentStart = 0;
 
     for (const token of fenceTokens) {

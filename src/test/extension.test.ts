@@ -496,6 +496,31 @@ suite('Extension Test Suite', () => {
 		assert.deepStrictEqual(editor.selection.active, opening);
 	});
 
+	test('toStartOrEnd recognizes named HTML comment regions as envelopes', async () => {
+		const content = [
+			'<!-- #Region Example comment -->',
+			'body',
+			'<!-- #endregion another comment -->'
+		].join('\n');
+		const document = await vscode.workspace.openTextDocument({
+			content,
+			language: 'markdown'
+		});
+		const editor = await vscode.window.showTextDocument(document);
+		const openingOffset = content.indexOf('<!--');
+		const closingOffset = content.lastIndexOf('<!--');
+		editor.selection = new vscode.Selection(
+			document.positionAt(openingOffset),
+			document.positionAt(openingOffset)
+		);
+
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+		assert.deepStrictEqual(editor.selection.active, document.positionAt(closingOffset));
+
+		await vscode.commands.executeCommand('caser.toStartOrEnd');
+		assert.deepStrictEqual(editor.selection.active, document.positionAt(openingOffset));
+	});
+
 	test('toStartOrEnd navigates Markdown headings when there is no enclosure', async () => {
 		const content = [
 			'# First',
@@ -678,7 +703,7 @@ suite('Extension Test Suite', () => {
 		assert.strictEqual(document.offsetAt(editor.selection.active), '[🔗 '.length);
 	});
 
-	test('toFence wraps selected text, selects the block, and cycles it', async () => {
+	test('toFence wraps selected text in a region, then cycles to configured fences', async () => {
 		const document = await vscode.workspace.openTextDocument({ content: 'fenced content' });
 		const editor = await vscode.window.showTextDocument(document);
 		editor.selection = new vscode.Selection(
@@ -689,12 +714,16 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('caser.toFence');
 
 		const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
-		assert.strictEqual(document.getText(), ['```cs', 'fenced content', '```'].join(eol));
+		assert.strictEqual(document.getText(), [
+			'<!-- #region -->',
+			'fenced content',
+			'<!-- #endregion -->'
+		].join(eol));
 		assert.strictEqual(document.getText(editor.selection), document.getText());
 
 		await vscode.commands.executeCommand('caser.toFence');
 
-		assert.strictEqual(document.getText(), ['```json', 'fenced content', '```'].join(eol));
+		assert.strictEqual(document.getText(), ['```cs', 'fenced content', '```'].join(eol));
 		assert.strictEqual(document.getText(editor.selection), document.getText());
 	});
 
@@ -705,12 +734,12 @@ suite('Extension Test Suite', () => {
 		await vscode.commands.executeCommand('caser.toFence');
 
 		const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
-		assert.strictEqual(document.getText(), ['```cs', '', '```'].join(eol));
+		assert.strictEqual(document.getText(), ['<!-- #region -->', '', '<!-- #endregion -->'].join(eol));
 		assert.strictEqual(document.getText(editor.selection), document.getText());
 
 		await vscode.commands.executeCommand('caser.toFence');
 
-		assert.strictEqual(document.getText(), ['```json', '', '```'].join(eol));
+		assert.strictEqual(document.getText(), ['```cs', '', '```'].join(eol));
 		assert.strictEqual(document.getText(editor.selection), document.getText());
 	});
 
