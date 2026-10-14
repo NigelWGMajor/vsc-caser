@@ -743,7 +743,7 @@
     "license": "ISC",
     "dependencies": {
         "@types/vscode": "^1.125.0",
-        "@vscode/vsce": "^3.9.2",
+        "@vscode/vsce": "^4.0.0",
         "crypto-js": "^4.2.0",
         "linkify-it": "~5.0.2",
         "mathjs": "^15.2.0"
