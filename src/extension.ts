@@ -38,6 +38,7 @@ import {
 import {
     collapseToOneLine,
     escapeCsvNewlines,
+    parseAsciiTable,
     unwrapMarkdownTableColumns,
     wrapMarkdownTableColumns
 } from './selectionTransforms';
@@ -2462,7 +2463,7 @@ export function activate(context: vscode.ExtensionContext) {
         const setA = config.get<string[]>('squareIcons', ["🟥", "🟨", "🟩", "🟦", "✅", "❎"]);
         const setB = config.get<string[]>('dotIcons', ["🔴", "🟡", "🟢", "🔵", "✔️", "✖️"]);
         const setC = config.get<string[]>('stepIcons', ["💭", "🔎", "👋", "💡", "🚧", "🎁"]);
-        const setD = config.get<string[]>('queryIcons', ["❓", "⁉️", "❌", "❗", "‼️", "🛑"]);
+        const setD = config.get<string[]>('queryIcons', ["❓", "⭕", "⁉️", "❌", "❗", "‼️"]);
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
             const document = editor.document;
@@ -2537,7 +2538,7 @@ export function activate(context: vscode.ExtensionContext) {
         const setA = config.get<string[]>('squareIcons', ["🟥", "🟨", "🟩", "🟦", "✅", "❎"]);
         const setB = config.get<string[]>('dotIcons', ["🔴", "🟡", "🟢", "🔵", "✔️", "✖️"]);
         const setC = config.get<string[]>('stepIcons', ["💭", "🔎", "👋", "💡", "🚧", "🎁"]);
-        const setD = config.get<string[]>('queryIcons', ["❓", "⁉️", "❌", "❗", "‼️", "🛑"]);
+        const setD = config.get<string[]>('queryIcons', ["❓", "⭕", "⁉️", "❌", "❗", "‼️"]);
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
             const document = editor.document;
@@ -2599,7 +2600,7 @@ export function activate(context: vscode.ExtensionContext) {
         const setA = config.get<string[]>('squareIcons', ["🟥", "🟨", "🟩", "🟦", "✅", "❎"]);
         const setB = config.get<string[]>('dotIcons', ["🔴", "🟡", "🟢", "🔵", "✔️", "✖️"]);
         const setC = config.get<string[]>('stepIcons', ["💭", "🔎", "👋", "💡", "🚧", "🎁"]);
-        const setD = config.get<string[]>('queryIcons', ["❓", "⁉️", "❌", "❗", "‼️", "🛑"]);
+        const setD = config.get<string[]>('queryIcons', ["❓", "⭕", "⁉️", "❌", "❗", "‼️"]);
         const setAll = [...setA, ...setB, ...setC, ...setD];
         if (editor) {
             const document = editor.document;
@@ -3160,11 +3161,14 @@ export function activate(context: vscode.ExtensionContext) {
                         return;
                     }
 
-                    // Detect if input is already a markdown table (contains pipes)
-                    const isMarkdownTable = lines[0].includes('|');
+                    // Detect an ASCII/box-drawing table, then a markdown table (contains pipes)
+                    const asciiRows = parseAsciiTable(lines);
+                    const isMarkdownTable = asciiRows !== undefined || lines[0].includes('|');
                     let rows: string[][];
 
-                    if (isMarkdownTable) {
+                    if (asciiRows) {
+                        rows = asciiRows;
+                    } else if (isMarkdownTable) {
                         // Parse markdown table rows
                         rows = [];
                         for (let i = 0; i < lines.length; i++) {

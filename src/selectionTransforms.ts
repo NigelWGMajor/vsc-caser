@@ -64,6 +64,87 @@ function parseMarkdownRow(line: string): string[] {
     return cells;
 }
 
+// Box-drawing (U+2500–U+257F) and block elements (U+2580–U+259F).
+const boxCharacters = /[─-▟]/;
+const asciiBorderLine = /^[\s+\-=:|─-▟]+$/;
+const asciiBorderStroke = /[-=─━┄┅┈┉╌╍═▀▄█▁▔]/;
+const asciiCellDelimiter = /[|│┃┆┇┊┋╎╏║█▌▐▏▕]/;
+
+function isAsciiBorderLine(line: string): boolean {
+    return asciiBorderLine.test(line) && asciiBorderStroke.test(line);
+}
+
+function parseAsciiRow(line: string): string[] {
+    const cells = line.split(asciiCellDelimiter).map(cell => cell.trim());
+    if (cells[0] === '') {
+        cells.shift();
+    }
+    if (cells[cells.length - 1] === '') {
+        cells.pop();
+    }
+    return cells;
+}
+
+function mergeAsciiRows(rows: string[][]): string[] {
+    const columnCount = Math.max(...rows.map(row => row.length));
+    const merged: string[] = [];
+    for (let column = 0; column < columnCount; column++) {
+        merged.push(rows
+            .map(row => row[column] ?? '')
+            .filter(cell => cell.length > 0)
+            .join(' '));
+    }
+    return merged;
+}
+
+/**
+ * Parses a table drawn with ASCII borders (`+---+`) or box-drawing/block
+ * characters (`┌─┬─┐`, `║`, `█`) into rows of cells. Returns undefined when
+ * the lines don't look like such a table, so markdown tables (`| --- |`)
+ * are left to the markdown parser.
+ *
+ * Lines between border lines form groups. The first group is the header.
+ * When borders separate every body row, each group is merged into a single
+ * row (cells spanning several lines are joined with spaces); otherwise each
+ * body line is its own row.
+ */
+export function parseAsciiTable(lines: string[]): string[][] | undefined {
+    const isAscii = lines.some(line => boxCharacters.test(line))
+        || lines.some(line => isAsciiBorderLine(line) && line.includes('+'));
+    if (!isAscii) {
+        return undefined;
+    }
+
+    const groups: string[][][] = [];
+    let current: string[][] = [];
+    for (const line of lines) {
+        if (isAsciiBorderLine(line)) {
+            if (current.length > 0) {
+                groups.push(current);
+                current = [];
+            }
+            continue;
+        }
+        current.push(parseAsciiRow(line));
+    }
+    if (current.length > 0) {
+        groups.push(current);
+    }
+    if (groups.length === 0) {
+        return undefined;
+    }
+
+    let rows: string[][];
+    if (groups.length > 2) {
+        rows = groups.map(mergeAsciiRows);
+    } else {
+        rows = [mergeAsciiRows(groups[0]), ...(groups[1] ?? [])];
+    }
+
+    const columnCount = Math.max(...rows.map(row => row.length));
+    return rows.map(row => [...row, ...Array(columnCount - row.length).fill('')]);
+}
+
 function wrapCellLine(text: string, width: number): string[] {
     const words = text.trim().split(/\s+/).filter(word => word.length > 0);
     if (words.length === 0) {

@@ -21,6 +21,7 @@ import {
 import {
 	collapseToOneLine,
 	escapeCsvNewlines,
+	parseAsciiTable,
 	unwrapMarkdownTableColumns,
 	wrapMarkdownTableColumns
 } from '../selectionTransforms';
@@ -134,6 +135,68 @@ suite('Extension Test Suite', () => {
 
 		assert.strictEqual(document.getText().split('\n').length, 3);
 		assert.strictEqual(document.getText().includes('first line\\nsecond line'), true);
+	});
+
+	test('parseAsciiTable reads +---+ bordered tables', () => {
+		const lines = [
+			'+----+-------+',
+			'| id | name  |',
+			'+----+-------+',
+			'| 1  | alpha |',
+			'| 2  | beta  |',
+			'+----+-------+'
+		];
+		assert.deepStrictEqual(parseAsciiTable(lines), [
+			['id', 'name'],
+			['1', 'alpha'],
+			['2', 'beta']
+		]);
+	});
+
+	test('parseAsciiTable reads box-drawing grid tables and merges multi-line cells', () => {
+		const lines = [
+			'┌────┬─────────┐',
+			'│ id │ notes   │',
+			'╞════╪═════════╡',
+			'│ 1  │ first   │',
+			'│    │ line    │',
+			'├────┼─────────┤',
+			'│ 2  │ second  │',
+			'└────┴─────────┘'
+		];
+		assert.deepStrictEqual(parseAsciiTable(lines), [
+			['id', 'notes'],
+			['1', 'first line'],
+			['2', 'second']
+		]);
+	});
+
+	test('parseAsciiTable leaves markdown tables alone', () => {
+		assert.strictEqual(parseAsciiTable(['| a | b |', '| --- | :-: |', '| 1 | 2 |']), undefined);
+	});
+
+	test('toTable converts a box-drawing table to markdown', async () => {
+		const input = [
+			'╔════╦══════╗',
+			'║ id ║ name ║',
+			'╠════╬══════╣',
+			'║ 1  ║ x    ║',
+			'╚════╩══════╝'
+		].join('\n');
+		const document = await vscode.workspace.openTextDocument({ content: input });
+		const editor = await vscode.window.showTextDocument(document);
+		editor.selection = new vscode.Selection(
+			document.lineAt(0).range.start,
+			document.lineAt(document.lineCount - 1).range.end
+		);
+
+		await vscode.commands.executeCommand('caser.csvToMarkdownTable');
+
+		assert.strictEqual(document.getText(), [
+			'| id | name |',
+			'| -- | ---- |',
+			'| 1  | x    |'
+		].join('\n'));
 	});
 
 	test('toWrappedColumns displays long cells on padded continuation rows', async () => {
@@ -391,7 +454,7 @@ suite('Extension Test Suite', () => {
 
 	test('markQuery cleans duplicate prefixes without altering symbols in the content', async () => {
 		const cases = [
-			{ input: '❓ ❓ investigate', expected: '⁉️ investigate' },
+			{ input: '❓ ❓ investigate', expected: '⭕ investigate' },
 			{ input: '⁉ investigate', expected: '❌ investigate' },
 			{ input: 'plain ❓ content', expected: '❓ plain ❓ content' },
 			{ input: '💭 ❓ mixed markers', expected: '❓ mixed markers' }

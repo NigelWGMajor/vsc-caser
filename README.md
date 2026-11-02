@@ -306,7 +306,7 @@ The symbol sets can be edited in the settings.json file. When a symbol is placed
 
 | key    | method      | notes                         | range                              |
 | ------ | ----------- | ----------------------------- | ---------------------------------- |
-| `ac Q` | markQuery   | ❓⁉️❌❗‼️🛑                 |                                    |
+| `ac Q` | markQuery   | ❓⭕⁉️❌❗‼️                 |                                    |
 | `ac M` | markline    | 🟥🟨🟩🟦✅❎ <-- if a header | These are bound to                 |
 | `ac M` | Markline    | 🔴🟡🟢🔵✔️✖️ <-- otherwise   | the start of a line                |
 | `ac S` | markStep    | 💭🔎👋💡🚧🎁                 | (state markers)                    |
