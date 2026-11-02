@@ -1,8 +1,8 @@
 {
     "name": "caser",
     "displayName": "Caser",
-    "description": "This is the README for extension \"caser\" version 1.0.54.",
-    "version": "1.0.54",
+    "description": "This is the README for extension \"caser\" version 1.0.56.",
+    "version": "1.0.56",
     "engines": {
         "vscode": "^1.92.2"
     },
@@ -728,6 +728,7 @@
         "@typescript-eslint/parser": "^8.65.0",
         "@vscode/test-cli": "^0.0.15",
         "@vscode/test-electron": "^2.4.0",
+        "@vscode/vsce": "^4.1.0",
         "eslint": "^10.8.0",
         "npm-run-all2": "~8.0.4",
         "ts-loader": "^9.5.4",
@@ -743,7 +744,6 @@
     "license": "ISC",
     "dependencies": {
         "@types/vscode": "^1.125.0",
-        "@vscode/vsce": "^4.0.0",
         "crypto-js": "^4.2.0",
         "linkify-it": "~5.0.2",
         "mathjs": "^15.2.0"
@@ -752,10 +752,10 @@
         "xml2js": "^0.6.2",
         "serialize-javascript": "^7.0.5",
         "fast-uri": "~3.1.4",
+        "glob": "^14.0.3",
+        "minimatch": "^11.0.4",
         "mocha": {
-            "diff": "8.0.3",
-            "glob": "13.0.6",
-            "minimatch": "10.2.6"
+            "diff": "8.0.3"
         }
     }
 }

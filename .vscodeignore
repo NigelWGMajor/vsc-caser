@@ -61,3 +61,6 @@ src/
 tsconfig.json
 webpack.config.js
 esbuild.js
+
+# Claude Code local settings
+.claude/**
