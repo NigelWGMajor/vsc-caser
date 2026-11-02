@@ -4676,28 +4676,52 @@ export function activate(context: vscode.ExtensionContext) {
         });
     });
     const toJiraTicket = vscode.commands.registerCommand('caser.toJiraTicket', async () => {
-        const editor = vscode.window.activeTextEditor;
-        if (!editor) {
-            return;
-        }
+        // Accepted references:
+        //   PD-123456 -> Jira ticket (JIRA_URL/browse/...)
+        //   #12345    -> PR on degreed/Degreed (5 digits)
+        //   #1234     -> PR on degreed/fe-workspace (4 digits)
+        const jiraPattern = /^[A-Za-z][A-Za-z0-9]*-\d+$/;
+        const prPattern = /^#(\d{4,5})$/;
+        const isReference = (text: string) => jiraPattern.test(text) || prPattern.test(text);
 
-        let selection = editor.selection;
-        if (selection.isEmpty) {
-            const ticketRange = editor.document.getWordRangeAtPosition(
-                selection.active,
-                /[A-Za-z][A-Za-z0-9]*-\d+/
-            );
-            if (!ticketRange) {
-                vscode.window.showWarningMessage('Place the cursor on a Jira ticket, such as PD-123456.');
+        // Clipboard first, so the command can be fired from terminal output.
+        let reference = (await vscode.env.clipboard.readText()).trim();
+
+        if (!isReference(reference)) {
+            const editor = vscode.window.activeTextEditor;
+            if (!editor) {
+                vscode.window.showWarningMessage('Copy or select a Jira ticket (PD-123456) or PR (#12345 / #1234).');
                 return;
             }
-            selection = new vscode.Selection(ticketRange.start, ticketRange.end);
-            editor.selection = selection;
+
+            let selection = editor.selection;
+            if (selection.isEmpty) {
+                const refRange = editor.document.getWordRangeAtPosition(
+                    selection.active,
+                    /[A-Za-z][A-Za-z0-9]*-\d+|#\d{4,5}\b/
+                );
+                if (!refRange) {
+                    vscode.window.showWarningMessage('Place the cursor on a Jira ticket (PD-123456) or PR (#12345 / #1234).');
+                    return;
+                }
+                selection = new vscode.Selection(refRange.start, refRange.end);
+                editor.selection = selection;
+            }
+
+            reference = editor.document.getText(selection).trim();
+            if (!isReference(reference)) {
+                vscode.window.showWarningMessage('Select a Jira ticket (PD-123456) or PR (#12345 / #1234).');
+                return;
+            }
         }
 
-        const ticket = editor.document.getText(selection).trim();
-        if (!/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(ticket)) {
-            vscode.window.showWarningMessage('Select a Jira ticket, such as PD-123456.');
+        const prMatch = prPattern.exec(reference);
+        if (prMatch) {
+            const prNumber = prMatch[1];
+            const repo = prNumber.length === 5 ? 'Degreed' : 'fe-workspace';
+            await vscode.env.openExternal(vscode.Uri.parse(
+                `https://github.com/degreed/${repo}/pull/${prNumber}`
+            ));
             return;
         }
 
@@ -4708,7 +4732,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         await vscode.env.openExternal(vscode.Uri.parse(
-            `${jiraUrl.replace(/\/$/, '')}/browse/${ticket}`
+            `${jiraUrl.replace(/\/$/, '')}/browse/${reference}`
         ));
     });
     const toArchive = vscode.commands.registerCommand('caser.toArchive', async () => {
